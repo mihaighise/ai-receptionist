@@ -18,8 +18,8 @@ Caller ⇄ Twilio phone number
 - **Streaming replies:** Claude's reply is spoken while it's still being written, which keeps the pause before each answer short.
 - **Interruptions:** if the caller talks over the receptionist, the audio stops right away and it listens.
 - **Tools Claude can use:**
-  - `take_message` saves the caller's name, callback number and request to `data/messages.jsonl`.
-  - `transfer_call` forwards the call to `TRANSFER_NUMBER`.
+  - `take_message` saves the caller's name, callback number and request to `data/messages.jsonl`, and sends it to the owner by SMS and/or WhatsApp, marked **URGENT** when it matches the business's urgency rule.
+  - `transfer_call` forwards the call to a person. It's only offered when a transfer number is set.
   - `end_call` hangs up after saying goodbye.
 
 | File | What it does |
@@ -27,7 +27,8 @@ Caller ⇄ Twilio phone number
 | `src/server.js` | Express webhook for Twilio and the WebSocket server |
 | `src/mediaStream.js` | Runs one call: routes audio between Twilio, Deepgram and Cartesia, and handles interruptions |
 | `src/receptionist.js` | The conversation with Claude, and the tools |
-| `src/business.js` | **Business details and the system prompt. Edit this for your business** |
+| `src/business.js` | **Business details, the actions turned on for it, and the system prompt. Edit this for your business** |
+| `src/twilio.js` | Shared Twilio REST client, used for transfers, hangups and alerts |
 | `src/stt.js` / `src/tts.js` | Deepgram and Cartesia WebSocket clients |
 
 ## Setup
@@ -66,6 +67,9 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 | `DEEPGRAM_API_KEY` | yes | Speech-to-text |
 | `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` | yes | Text-to-speech key, and a voice ID from the Cartesia voice library |
 | `TRANSFER_NUMBER` | no | Number to forward callers to when they ask for a person. Leave empty to disable transfers |
+| `OWNER_SMS_NUMBER` | no | Owner's mobile; each message is texted here. Texts to US numbers need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance), otherwise they fail with error 30034 |
+| `OWNER_WHATSAPP_NUMBER` | no | Owner's WhatsApp number; each message is also sent here |
+| `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |
 | `ECHO` | no | `true` plays the caller's own voice back, to test the audio stream without the AI services |
 | `RECORD_CALLS` | no | `true` has Twilio record calls, for checking audio quality. Recordings are billed by Twilio |
 | `CLAUDE_MODEL`, `DEEPGRAM_MODEL`, `CARTESIA_MODEL` | no | Override the default models (`claude-sonnet-5-5`, `nova-3`, `sonic-latest`) |

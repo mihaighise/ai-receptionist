@@ -3,44 +3,83 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { appendFile, mkdir } from 'node:fs/promises';
-import { buildSystemPrompt } from './business.js';
+import { BUSINESS, buildSystemPrompt } from './business.js';
+import { getTwilioClient } from './twilio.js';
 
 const client = new Anthropic();
 const MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-5-5';
 const MESSAGES_FILE = new URL('../data/messages.jsonl', import.meta.url);
 
-const TOOLS = [
-  {
-    name: 'take_message',
-    description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this.',
-    eager_input_streaming: true,
-    input_schema: {
-      type: 'object',
-      properties: {
-        caller_name: { type: 'string', description: "The caller's name" },
-        callback_number: { type: 'string', description: 'Best number to call the caller back on' },
-        message: { type: 'string', description: 'What the caller needs, with any dates or times they mentioned' },
+// Only offer Claude the tools this business has turned on.
+function buildTools({ actions }) {
+  const tools = [
+    {
+      name: 'take_message',
+      description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this.',
+      eager_input_streaming: true,
+      input_schema: {
+        type: 'object',
+        properties: {
+          caller_name: { type: 'string', description: "The caller's name" },
+          callback_number: { type: 'string', description: 'Best number to call the caller back on' },
+          message: { type: 'string', description: 'What the caller needs, with any dates, times or addresses they mentioned' },
+          urgent: { type: 'boolean', description: 'True if the staff should act on this right away' },
+        },
+        required: ['caller_name', 'callback_number', 'message', 'urgent'],
       },
-      required: ['caller_name', 'callback_number', 'message'],
     },
-  },
-  {
-    name: 'transfer_call',
-    description: 'Transfer the caller to a member of staff, when they ask for a person or the request needs one right away.',
-    eager_input_streaming: true,
-    input_schema: {
-      type: 'object',
-      properties: { reason: { type: 'string', description: 'Why the caller is being transferred' } },
-      required: ['reason'],
+    {
+      name: 'end_call',
+      description: 'Hang up after the caller is done and you have said goodbye.',
+      eager_input_streaming: true,
+      input_schema: { type: 'object', properties: {}, required: [] },
     },
-  },
-  {
-    name: 'end_call',
-    description: 'Hang up after the caller is done and you have said goodbye.',
-    eager_input_streaming: true,
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-];
+  ];
+  if (actions.transfer.number) {
+    tools.push({
+      name: 'transfer_call',
+      description: 'Transfer the caller to a member of staff, when they ask for a person or the request needs one right away.',
+      eager_input_streaming: true,
+      input_schema: {
+        type: 'object',
+        properties: { reason: { type: 'string', description: 'Why the caller is being transferred' } },
+        required: ['reason'],
+      },
+    });
+  }
+  return tools;
+}
+
+const TOOLS = buildTools(BUSINESS);
+
+// Send a saved message to the business owner on each configured channel.
+// Failures are logged; the message is still in the file.
+async function notifyOwner(entry, smsFrom) {
+  const { sms, whatsapp } = BUSINESS.actions.notify;
+  const body = [
+    `${entry.urgent ? 'URGENT ' : ''}New message from ${entry.caller_name} (${entry.callback_number}):`,
+    entry.message,
+  ].join('\n');
+
+  const sends = [];
+  if (sms) sends.push(['SMS', { to: sms, from: smsFrom }]);
+  if (whatsapp) {
+    // Defaults to the Twilio WhatsApp Sandbox number, for testing.
+    const from = process.env.TWILIO_WHATSAPP_FROM ?? '+14155238886';
+    sends.push(['WhatsApp', { to: `whatsapp:${whatsapp}`, from: `whatsapp:${from}` }]);
+  }
+
+  await Promise.all(
+    sends.map(async ([channel, params]) => {
+      try {
+        await getTwilioClient().messages.create({ ...params, body });
+        console.log(`Sent message to the owner by ${channel}`);
+      } catch (err) {
+        console.error(`Could not send ${channel} to the owner (Twilio error ${err.code}): ${err.message}`);
+      }
+    }),
+  );
+}
 
 // Index just past the last sentence end in text, or 0 if there isn't one yet.
 function sentenceEnd(text) {
@@ -62,7 +101,7 @@ export class Receptionist {
   #ended = false;
 
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
-  // call: { callSid, from, waitForPlayback(), transfer(), hangup() }
+  // call: { callSid, from, to, waitForPlayback(), transfer(), hangup() }
   constructor({ speech, call }) {
     this.speech = speech;
     this.call = call;
@@ -185,14 +224,22 @@ export class Receptionist {
       case 'take_message': {
         const missing = missingFields(block.input, ['caller_name', 'callback_number', 'message']);
         if (missing.length) return result(`Missing fields: ${missing.join(', ')}`, true);
-        const entry = { time: new Date().toISOString(), callSid: this.call.callSid, from: this.call.from, ...block.input };
+        const entry = {
+          time: new Date().toISOString(),
+          callSid: this.call.callSid,
+          from: this.call.from,
+          ...block.input,
+          urgent: block.input.urgent === true,
+        };
         await mkdir(new URL('.', MESSAGES_FILE), { recursive: true });
         await appendFile(MESSAGES_FILE, JSON.stringify(entry) + '\n');
+        // Don't make the caller wait on the text being sent.
+        notifyOwner(entry, this.call.to);
         return result('Message saved. Tell the caller the team will get back to them.');
       }
 
       case 'transfer_call':
-        if (!process.env.TRANSFER_NUMBER) {
+        if (!BUSINESS.actions.transfer.number) {
           return result('Transfers are not available right now. Offer to take a message instead.', true);
         }
         await this.call.waitForPlayback();
