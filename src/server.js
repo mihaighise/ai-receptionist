@@ -14,6 +14,15 @@ if (!PUBLIC_URL) {
   process.exit(1);
 }
 
+if (process.env.ECHO !== 'true') {
+  const missing = ['DEEPGRAM_API_KEY', 'CARTESIA_API_KEY', 'CARTESIA_VOICE_ID'].filter((key) => !process.env[key]);
+  if (missing.length) {
+    console.error(`Missing ${missing.join(', ')} (or set ECHO=true to test the audio stream only)`);
+    process.exit(1);
+  }
+  if (!process.env.TWILIO_ACCOUNT_SID) console.warn('TWILIO_ACCOUNT_SID not set: transfer_call and end_call will fail');
+}
+
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 
