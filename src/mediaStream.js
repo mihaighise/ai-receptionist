@@ -8,14 +8,11 @@ import twilio from 'twilio';
 import { DeepgramSTT } from './stt.js';
 import { CartesiaTTS } from './tts.js';
 import { Receptionist } from './receptionist.js';
-import { GREETING } from './business.js';
+import { BUSINESS, GREETING } from './business.js';
+import { getTwilioClient } from './twilio.js';
 
 const ECHO = process.env.ECHO === 'true';
 const PLAYBACK_TIMEOUT_MS = 15_000;
-
-let twilioClient;
-const getTwilioClient = () =>
-  (twilioClient ??= twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN));
 
 export function handleMediaStream(ws) {
   let streamSid = null;
@@ -86,12 +83,13 @@ export function handleMediaStream(ws) {
   stt?.on('speech', interrupt);
   stt?.on('turn', (text) => receptionist?.respond(text));
 
-  function startReceptionist(from) {
+  function startReceptionist({ from, to }) {
     receptionist = new Receptionist({
       speech,
       call: {
         callSid,
         from,
+        to,
         waitForPlayback: () =>
           new Promise((resolve) => {
             if (playing.size === 0) return resolve();
@@ -100,7 +98,7 @@ export function handleMediaStream(ws) {
           }),
         transfer: () => {
           const twiml = new twilio.twiml.VoiceResponse();
-          twiml.dial(process.env.TRANSFER_NUMBER);
+          twiml.dial(BUSINESS.actions.transfer.number);
           return getTwilioClient().calls(callSid).update({ twiml: twiml.toString() });
         },
         hangup: () => getTwilioClient().calls(callSid).update({ status: 'completed' }),
@@ -146,7 +144,7 @@ export function handleMediaStream(ws) {
           format: msg.start.mediaFormat,
           params: msg.start.customParameters,
         });
-        if (!ECHO) startReceptionist(msg.start.customParameters?.from);
+        if (!ECHO) startReceptionist(msg.start.customParameters ?? {});
         break;
 
       case 'media':
