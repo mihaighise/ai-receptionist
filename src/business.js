@@ -1,4 +1,9 @@
 // Everything the receptionist knows about the business. Edit this file for your business.
+//
+// Claude isn't trained on this: buildSystemPrompt() below turns these details into its
+// instructions, which are sent with every reply. Restart the server after editing.
+// Claude only knows what's written here, so the more questions the FAQ covers, the more
+// the receptionist can answer without taking a message.
 
 export const BUSINESS = {
   name: 'Sunrise Dental',
@@ -6,6 +11,7 @@ export const BUSINESS = {
   address: '123 Main Street, Springfield',
   hours: 'Monday to Friday 8am to 6pm, Saturday 9am to 1pm, closed Sunday',
   phone: '+1 555 010 0000',
+  // Facts the receptionist can answer from, one per line. Write them as plain sentences.
   faq: [
     'New patients are welcome; the first visit includes an exam and X-rays.',
     'Most major dental insurance plans are accepted.',
@@ -24,10 +30,15 @@ export const BUSINESS = {
   },
 };
 
+// Spoken as soon as the call connects, without waiting for Claude.
 export const GREETING = `Thanks for calling ${BUSINESS.name}. How can I help you today?`;
 
+// Builds Claude's instructions for one call: who it is, the business facts, how to speak on
+// the phone, and what it's allowed to do. The tool rules here must match the tools offered
+// in receptionist.js, so both are driven by the same `actions` settings.
 export function buildSystemPrompt({ callerNumber }) {
   const { actions } = BUSINESS;
+  // One line per thing the receptionist can do; the transfer line depends on whether transfers are on.
   const capabilities = [
     '- Answer questions using only the business details above. If you don\'t know something, say so and offer to take a message rather than guessing.',
     `- To book, change or cancel an appointment, or for anything you can't handle yourself, take a message with the take_message tool: get the caller's name, the best callback number (offer to use the number they're calling from) and what they need, then read the details back before saving. Mark it urgent if ${actions.urgentWhen}.`,
