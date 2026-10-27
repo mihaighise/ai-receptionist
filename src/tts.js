@@ -9,13 +9,15 @@ import WebSocket from 'ws';
 
 export class CartesiaTTS extends EventEmitter {
   #ws;
-  #pending = [];
+  #pending = []; // requests made before the socket finished connecting (e.g. the greeting)
 
+  // One WebSocket per call, reused for every reply: opening a new connection per sentence would add delay.
   constructor() {
     super();
     this.#ws = new WebSocket('wss://api.cartesia.ai/tts/websocket', {
       headers: {
         'X-API-Key': process.env.CARTESIA_API_KEY,
+        // Cartesia versions its API by date; override in .env if they change the format.
         'Cartesia-Version': process.env.CARTESIA_VERSION ?? '2026-08-14',
       },
     });
@@ -24,6 +26,8 @@ export class CartesiaTTS extends EventEmitter {
       for (const msg of this.#pending) this.#ws.send(msg);
       this.#pending = [];
     });
+    // Responses for all replies share this socket; context_id says which reply each one belongs to.
+    // "chunk" carries a piece of base64 mu-law audio, "done" means the reply is fully generated.
     this.#ws.on('message', (data) => {
       const msg = JSON.parse(data);
       if (msg.type === 'chunk' && msg.data) this.emit('audio', msg.context_id, msg.data);
@@ -39,11 +43,15 @@ export class CartesiaTTS extends EventEmitter {
     else if (this.#ws.readyState === WebSocket.CONNECTING) this.#pending.push(data);
   }
 
+  // A context is one reply. Any unique string works as its ID.
   newContext() {
     return randomUUID();
   }
 
   // Send the next piece of text for a context; final=true marks the end of the reply.
+  // `continue: true` tells Cartesia more text is coming, so it keeps the intonation flowing
+  // across pieces instead of treating each sentence as a separate utterance. Every request
+  // in a context must use the same voice and output format.
   speak(contextId, transcript, final = false) {
     this.#send({
       model_id: process.env.CARTESIA_MODEL ?? 'sonic-latest',
@@ -56,6 +64,7 @@ export class CartesiaTTS extends EventEmitter {
     });
   }
 
+  // Stop generating a reply, e.g. when the caller interrupts. Cartesia sends nothing more for it.
   cancel(contextId) {
     this.#send({ context_id: contextId, cancel: true });
   }
