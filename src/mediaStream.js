@@ -110,6 +110,15 @@ export function handleMediaStream(ws) {
     const greeting = speech.begin();
     greeting.say(GREETING);
     greeting.end();
+
+    // Twilio records what it actually hears on the call; useful for debugging audio quality.
+    if (process.env.RECORD_CALLS === 'true') {
+      getTwilioClient()
+        .calls(callSid)
+        .recordings.create({ recordingChannels: 'dual' })
+        .then((rec) => console.log(`Recording ${rec.sid} started (Twilio console > Monitor > Logs > Calls)`))
+        .catch((err) => console.error('Could not start recording:', err.message));
+    }
   }
 
   function cleanup() {
