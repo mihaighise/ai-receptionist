@@ -29,6 +29,7 @@ Caller ⇄ Twilio phone number
 | `src/receptionist.js` | The conversation with Claude, and the tools |
 | `src/business.js` | **Business details, the actions turned on for it, and the system prompt. Edit this for your business** |
 | `src/twilio.js` | Shared Twilio REST client, used for transfers, hangups and alerts |
+| `src/costs.js` | Adds up what each call used and prints its cost per service when the call ends |
 | `src/stt.js` / `src/tts.js` | Deepgram and Cartesia WebSocket clients |
 
 ## Setup
@@ -72,6 +73,8 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 | `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |
 | `ECHO` | no | `true` plays the caller's own voice back, to test the audio stream without the AI services |
 | `RECORD_CALLS` | no | `true` has Twilio record calls, for checking audio quality. Recordings are billed by Twilio |
+| `DEEPGRAM_PROJECT_ID` | no | Deepgram project used to look up each call's cost. Found from the API key if not set |
+| `DEEPGRAM_PRICE_PER_MIN` | no | Price of Deepgram's billed minutes in the cost summary. Defaults to `0.0077` (Nova-3 pay as you go) |
 | `CLAUDE_MODEL`, `DEEPGRAM_MODEL`, `CARTESIA_MODEL` | no | Override the default models (`claude-sonnet-5-5`, `nova-3`, `sonic-latest`) |
 | `PORT` | no | Defaults to `3000` |
 
