@@ -73,6 +73,9 @@ export function handleMediaStream(ws) {
   // A reply is added when its first text is sent to Cartesia and removed when Twilio returns its
   // mark, i.e. the caller has heard all of it. While this set is non-empty, the receptionist is talking.
   const playing = new Set();
+  // Replies Cartesia is still generating (a subset of `playing`). Only these can be cancelled:
+  // once Cartesia sends "done" it forgets the reply, and cancelling it returns an error.
+  const generating = new Set();
   // Promises waiting for the receptionist to stop talking (see waitForPlayback below).
   let playbackWaiters = [];
   const playbackFinished = () => {
@@ -90,7 +93,10 @@ export function handleMediaStream(ws) {
       return {
         contextId,
         say(text) {
-          if (!started) playing.add(contextId);
+          if (!started) {
+            playing.add(contextId);
+            generating.add(contextId);
+          }
           started = true;
           tts.speak(contextId, text, lang);
         },
@@ -106,14 +112,18 @@ export function handleMediaStream(ws) {
   // (no longer in `playing`) is dropped. When a reply is fully generated, queue a mark named
   // after it; Twilio sends the mark back once the caller has heard everything before it.
   tts?.on('audio', (contextId, audio) => playing.has(contextId) && call.sendAudio(audio));
-  tts?.on('done', (contextId) => playing.has(contextId) && call.sendMark(contextId));
+  tts?.on('done', (contextId) => {
+    generating.delete(contextId);
+    if (playing.has(contextId)) call.sendMark(contextId);
+  });
 
   // Caller talks over the receptionist: stop the audio and the reply being generated.
   function interrupt() {
     if (playing.size === 0) return; // not talking, so nothing to interrupt
     console.log('Caller interrupted');
     call.clearAudio(); // stop what Twilio has already queued
-    for (const contextId of playing) tts.cancel(contextId); // stop Cartesia generating more
+    for (const contextId of generating) tts.cancel(contextId); // stop Cartesia generating more
+    generating.clear();
     playing.clear();
     playbackFinished();
     receptionist?.cancel(); // stop Claude writing more
@@ -121,8 +131,12 @@ export function handleMediaStream(ws) {
 
   // "speech" fires as soon as Deepgram recognizes any words (barge-in);
   // "turn" fires once the caller has finished speaking, with the full text.
-  stt?.on('speech', interrupt);
+  // Both are ignored once the call has ended: closing Deepgram makes it send the results for the
+  // last bit of audio, and those must not start a new reply on a call nobody is on anymore.
+  let ended = false;
+  stt?.on('speech', () => !ended && interrupt());
   stt?.on('turn', (text, wordLanguages) => {
+    if (ended) return;
     language = replyLanguage(wordLanguages, language);
     receptionist?.respond(text, language);
   });
@@ -187,7 +201,8 @@ export function handleMediaStream(ws) {
   // summary is only started once.
   let reported = false;
   function cleanup() {
-    receptionist?.cancel();
+    ended = true;
+    receptionist?.close();
     stt?.close();
     tts?.close();
     if (!ECHO && !reported && callSid) {

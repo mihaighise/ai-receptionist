@@ -8,6 +8,9 @@
 //   4. If Claude asked to use a tool (e.g. take_message), we run it, add the result to the
 //      history and ask Claude again, so it can tell the caller what happened.
 // The Claude API is stateless: the full conversation is sent with every request.
+//
+// Messages are drafts until the call ends: the caller can still change or cancel their request,
+// so only the final version is saved and sent to the owner, once per call (see close()).
 
 import Anthropic from '@anthropic-ai/sdk';
 import { appendFile, mkdir } from 'node:fs/promises';
@@ -28,7 +31,7 @@ function buildTools({ actions }) {
   const tools = [
     {
       name: 'take_message',
-      description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this.',
+      description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this. There is one message per call: calling this again replaces the earlier message, so always include every request the caller still wants, with any changes.',
       // Stream tool input as it's generated instead of buffering it. The API then no longer
       // validates the input for us, so #runTool checks the fields itself.
       eager_input_streaming: true,
@@ -42,6 +45,12 @@ function buildTools({ actions }) {
         },
         required: ['caller_name', 'callback_number', 'message', 'urgent'],
       },
+    },
+    {
+      name: 'cancel_message',
+      description: 'Delete the message saved earlier in this call, when the caller no longer wants it. Nothing is sent to the staff.',
+      eager_input_streaming: true,
+      input_schema: { type: 'object', properties: {}, required: [] },
     },
     {
       name: 'end_call',
@@ -132,6 +141,10 @@ export class Receptionist {
   #ended = false;
   // The language of the current turn ('en' or 'es'); replies are spoken in it.
   #language = 'en';
+  // The message taken on this call, not yet saved or sent; replaced or cleared if the caller changes their mind.
+  #draft = null;
+  // Set once close() has run; the call is over and the draft has been handled.
+  #closed = false;
 
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
   // call: { callSid, from, to, waitForPlayback(), transfer(), hangup() }
@@ -166,6 +179,30 @@ export class Receptionist {
     this.#stream?.abort();
   }
 
+  // The call is over (hung up, transferred or ended by us): stop the current reply, ignore any
+  // later turns, and save and send the final version of the message, if there is one.
+  // Can be called more than once; only the first call does anything.
+  close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#ended = true;
+    this.cancel();
+    if (this.#draft) this.#sendMessage(this.#draft);
+  }
+
+  // Save the message to the file, then send it to the owner. Save first, so the message is kept
+  // even if sending it fails.
+  async #sendMessage(entry) {
+    try {
+      await mkdir(new URL('.', MESSAGES_FILE), { recursive: true });
+      await appendFile(MESSAGES_FILE, JSON.stringify(entry) + '\n');
+      console.log('Message saved');
+    } catch (err) {
+      console.error('Could not save the message:', err.message);
+    }
+    await notifyOwner(entry, this.call.to);
+  }
+
   // Handles one caller turn: ask Claude, run any tools it asks for, and repeat until Claude
   // has given a plain spoken answer (or the turn was cancelled, or the call ended).
   async #run(turn, text, language) {
@@ -198,6 +235,8 @@ export class Receptionist {
         if (message.stop_reason === 'max_tokens' && toolUses.length) throw new Error('Tool call cut off at max_tokens');
         // No tools requested: Claude's spoken reply was the whole answer for this turn.
         if (message.stop_reason !== 'tool_use' || toolUses.length === 0) return;
+        // The caller hung up while Claude was replying: don't save a message they never confirmed.
+        if (this.#ended) return;
 
         const results = [];
         for (const block of toolUses) results.push(await this.#runTool(block));
@@ -296,20 +335,28 @@ export class Receptionist {
       case 'take_message': {
         const missing = missingFields(block.input, ['caller_name', 'callback_number', 'message']);
         if (missing.length) return result(`Missing fields: ${missing.join(', ')}`, true);
-        const entry = {
+        // Kept as a draft until the call ends, replacing any earlier one (see close()).
+        const updated = this.#draft !== null;
+        this.#draft = {
           time: new Date().toISOString(),
           callSid: this.call.callSid,
           from: this.call.from,
           ...block.input,
           urgent: block.input.urgent === true,
         };
-        // Save first, so the message is kept even if sending it to the owner fails.
-        await mkdir(new URL('.', MESSAGES_FILE), { recursive: true });
-        await appendFile(MESSAGES_FILE, JSON.stringify(entry) + '\n');
-        // Don't make the caller wait on the text being sent.
-        notifyOwner(entry, this.call.to);
-        return result('Message saved. Tell the caller the team will get back to them.');
+        console.log(updated ? 'Message updated (sent when the call ends)' : 'Message taken (sent when the call ends)');
+        return result(
+          updated
+            ? 'Message updated. Tell the caller the change has been noted.'
+            : 'Message saved. Tell the caller the team will get back to them.',
+        );
       }
+
+      case 'cancel_message':
+        if (!this.#draft) return result('There is no message to cancel.', true);
+        this.#draft = null;
+        console.log('Message cancelled');
+        return result('Message deleted; nothing will be sent. Tell the caller it has been cancelled.');
 
       case 'transfer_call':
         if (!BUSINESS.actions.transfer.number) {
@@ -329,7 +376,7 @@ export class Receptionist {
         return result('Call ended.');
 
       default:
-        return result(`Unknown tool ${block.name}. Available tools: take_message, transfer_call, end_call.`, true);
+        return result(`Unknown tool ${block.name}. Available tools: take_message, cancel_message, transfer_call, end_call.`, true);
     }
   }
 }

@@ -49,6 +49,8 @@ export function buildSystemPrompt({ callerNumber }) {
   const capabilities = [
     '- Answer questions using only the business details above. If you don\'t know something, say so and offer to take a message rather than guessing.',
     `- To book, change or cancel an appointment, or for anything you can't handle yourself, take a message with the take_message tool: get the caller's name, the best callback number (offer to use the number they're calling from) and what they need, then read the details back before saving. Mark it urgent if ${actions.urgentWhen}.`,
+    "- There is one message per call, and the staff only receive it after the call ends. If the caller changes or adds to their request after you've saved it, read back the changes and call take_message again with the complete updated message. If they want to cancel it, use cancel_message.",
+
     actions.transfer.number
       ? '- If the caller asks for a person, or the matter is urgent and they want to speak to someone now, use transfer_call.'
       : '- No one is available to take calls right now; if the caller asks for a person, offer to take a message so the team can call them back.',

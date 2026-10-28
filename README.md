@@ -18,8 +18,10 @@ Caller ⇄ Twilio phone number
 - **Streaming replies:** Claude's reply is spoken while it's still being written, which keeps the pause before each answer short.
 - **English and Spanish:** the greeting tells callers they can speak Spanish, and the receptionist replies in whichever language the caller is speaking, switching back and forth mid-call. Messages for the owner are always written in English.
 - **Interruptions:** if the caller talks over the receptionist, the audio stops right away and it listens.
+- **Hang-ups:** once the caller hangs up, nothing more is sent to Claude, so no reply is generated and no new message is taken for a call nobody is on.
+- **Cost per call:** when a call ends, the server log shows what it cost: Claude from the tokens used, Deepgram from the billed minutes its API reports, and Twilio from the call's price. The summary appears up to about 2 minutes after the call, once Twilio and Deepgram have billed it.
 - **Tools Claude can use:**
-  - `take_message` saves the caller's name, callback number and request to `data/messages.jsonl`, and sends it to the owner by SMS and/or WhatsApp, marked **URGENT** when it matches the business's urgency rule.
+  - `take_message` takes down the caller's name, callback number and request. The caller can still change it during the call (calling it again replaces it) or cancel it with `cancel_message`. When the call ends, the final version is saved to `data/messages.jsonl` and sent to the owner by SMS and/or WhatsApp, marked **URGENT** when it matches the business's urgency rule. Nothing is sent if it was cancelled.
   - `transfer_call` forwards the call to a person. It's only offered when a transfer number is set.
   - `end_call` hangs up after saying goodbye.
 
@@ -90,5 +92,6 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 
 ## Known issues
 
+- Messages are kept in memory until the call ends. If the server stops or restarts during a call (including `npm run dev` restarting after a file is edited), that call's message is lost.
 - The voice can sound choppy at the start of a call. Cartesia streams audio much faster than real time, so the likely cause is the network path at the start of the call (laptop → ngrok → Twilio) or the greeting being sent while connections are still opening.
 - Appointments aren't booked directly yet. They're saved as messages for staff to follow up on.
