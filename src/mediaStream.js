@@ -16,7 +16,7 @@ import twilio from 'twilio';
 import { DeepgramSTT } from './stt.js';
 import { CartesiaTTS } from './tts.js';
 import { Receptionist } from './receptionist.js';
-import { BUSINESS, GREETING } from './business.js';
+import { BUSINESS, GREETING, LANGUAGES } from './business.js';
 import { getTwilioClient } from './twilio.js';
 import { CallCosts } from './costs.js';
 
@@ -24,6 +24,16 @@ import { CallCosts } from './costs.js';
 const ECHO = process.env.ECHO === 'true';
 // Safety net when waiting for audio to finish (before a transfer or hangup), in case a mark never comes back.
 const PLAYBACK_TIMEOUT_MS = 15_000;
+
+// The language to reply in after a caller turn, given the language Deepgram heard for each word.
+// Short answers like "ok", "no" or "sí" could be either language, so it only switches when the
+// turn has at least two words and most of them are in another language the receptionist speaks.
+function replyLanguage(wordLanguages, current) {
+  const counts = {};
+  for (const lang of wordLanguages) if (lang in LANGUAGES) counts[lang] = (counts[lang] ?? 0) + 1;
+  const [top, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] ?? [];
+  return top && wordLanguages.length >= 2 && count > wordLanguages.length / 2 ? top : current;
+}
 
 export function handleMediaStream(ws) {
   // Both IDs arrive in the "start" event. Twilio ignores outbound messages without the streamSid.
@@ -54,6 +64,8 @@ export function handleMediaStream(ws) {
   const stt = ECHO ? null : new DeepgramSTT();
   const tts = ECHO ? null : new CartesiaTTS();
   let receptionist = null;
+  // The language the conversation is in right now; follows the caller (see replyLanguage).
+  let language = 'en';
   // Adds up what this call uses, printed as a cost summary when the call ends.
   const costs = new CallCosts();
 
@@ -69,21 +81,22 @@ export function handleMediaStream(ws) {
     playbackWaiters = [];
   };
 
-  // How receptionist.js speaks: begin() starts a reply, say() adds text to it as Claude writes it,
-  // end() tells Cartesia no more text is coming for that reply.
+  // How receptionist.js speaks: begin(language) starts a reply, say() adds text to it as Claude
+  // writes it, end() tells Cartesia no more text is coming for that reply.
   const speech = {
-    begin() {
+    begin(lang) {
       const contextId = tts.newContext();
       let started = false;
       return {
+        contextId,
         say(text) {
           if (!started) playing.add(contextId);
           started = true;
-          tts.speak(contextId, text);
+          tts.speak(contextId, text, lang);
         },
         end() {
           // Skip replies that never said anything (e.g. a pure tool call) or were interrupted.
-          if (started && playing.has(contextId)) tts.speak(contextId, '', true);
+          if (started && playing.has(contextId)) tts.speak(contextId, '', lang, true);
         },
       };
     },
@@ -109,7 +122,10 @@ export function handleMediaStream(ws) {
   // "speech" fires as soon as Deepgram recognizes any words (barge-in);
   // "turn" fires once the caller has finished speaking, with the full text.
   stt?.on('speech', interrupt);
-  stt?.on('turn', (text) => receptionist?.respond(text));
+  stt?.on('turn', (text, wordLanguages) => {
+    language = replyLanguage(wordLanguages, language);
+    receptionist?.respond(text, language);
+  });
 
   // Called on the "start" event, once we know who is calling. `from` is the caller and `to` is
   // our Twilio number, both passed as <Parameter>s by the webhook in server.js.
@@ -141,9 +157,20 @@ export function handleMediaStream(ws) {
     });
 
     // The greeting is fixed text, so it's spoken right away without asking Claude.
-    const greeting = speech.begin();
-    greeting.say(GREETING);
-    greeting.end();
+    // English first, then the Spanish line as a separate reply in Spanish. The Spanish part is
+    // only sent once Cartesia has finished the English one, so their audio can't get mixed up.
+    // If the caller interrupts the English part, Cartesia never finishes it and the Spanish is skipped.
+    const english = speech.begin('en');
+    english.say(GREETING.en);
+    english.end();
+    const sayInSpanish = (contextId) => {
+      if (contextId !== english.contextId) return;
+      tts.off('done', sayInSpanish);
+      const spanish = speech.begin('es');
+      spanish.say(GREETING.es);
+      spanish.end();
+    };
+    tts.on('done', sayInSpanish);
 
     // Twilio records what it actually hears on the call; useful for debugging audio quality.
     // "dual" keeps the caller and the receptionist on separate channels.

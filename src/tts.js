@@ -1,6 +1,7 @@
 // Cartesia streaming text-to-speech for one call.
 // Each reply is one "context": text is sent in pieces as Claude writes it, and Cartesia keeps the
 // intonation continuous across pieces. Audio comes back as 8kHz mu-law, the format Twilio plays.
+// Each reply is spoken in one language ('en' or 'es'); the voice can differ per language.
 // Emits "audio" (contextId, base64 audio) and "done" (contextId).
 
 import { EventEmitter } from 'node:events';
@@ -49,14 +50,16 @@ export class CartesiaTTS extends EventEmitter {
   }
 
   // Send the next piece of text for a context; final=true marks the end of the reply.
+  // CARTESIA_VOICE_ID_ES picks a different voice for Spanish; otherwise the same voice speaks both.
   // `continue: true` tells Cartesia more text is coming, so it keeps the intonation flowing
   // across pieces instead of treating each sentence as a separate utterance. Every request
-  // in a context must use the same voice and output format.
-  speak(contextId, transcript, final = false) {
+  // in a context must use the same voice, language and output format.
+  speak(contextId, transcript, language, final = false) {
+    const spanishVoice = language === 'es' && process.env.CARTESIA_VOICE_ID_ES;
     this.#send({
       model_id: process.env.CARTESIA_MODEL ?? 'sonic-latest',
-      voice: process.env.CARTESIA_VOICE_ID,
-      language: process.env.CARTESIA_LANGUAGE ?? 'en',
+      voice: spanishVoice || process.env.CARTESIA_VOICE_ID,
+      language,
       output_format: { container: 'raw', encoding: 'pcm_mulaw', sample_rate: 8000 },
       context_id: contextId,
       transcript,
