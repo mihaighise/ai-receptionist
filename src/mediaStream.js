@@ -76,6 +76,10 @@ export function handleMediaStream(ws) {
   // Replies Cartesia is still generating (a subset of `playing`). Only these can be cancelled:
   // once Cartesia sends "done" it forgets the reply, and cancelling it returns an error.
   const generating = new Set();
+  // The greeting's replies (English and Spanish). The caller can't interrupt these: many callers
+  // say "Hello?" as soon as the call connects, which would otherwise cut the greeting off before
+  // they hear the Spanish line. What they say is still heard and answered once the greeting ends.
+  const greetingIds = new Set();
   // Promises waiting for the receptionist to stop talking (see waitForPlayback below).
   let playbackWaiters = [];
   const playbackFinished = () => {
@@ -120,6 +124,8 @@ export function handleMediaStream(ws) {
   // Caller talks over the receptionist: stop the audio and the reply being generated.
   function interrupt() {
     if (playing.size === 0) return; // not talking, so nothing to interrupt
+    // Only the greeting is playing: let it finish.
+    if ([...playing].every((id) => greetingIds.has(id))) return;
     console.log('Caller interrupted');
     call.clearAudio(); // stop what Twilio has already queued
     for (const contextId of generating) tts.cancel(contextId); // stop Cartesia generating more
@@ -172,15 +178,19 @@ export function handleMediaStream(ws) {
 
     // The greeting is fixed text, so it's spoken right away without asking Claude.
     // English first, then the Spanish line as a separate reply in Spanish. The Spanish part is
-    // only sent once Cartesia has finished the English one, so their audio can't get mixed up.
-    // If the caller interrupts the English part, Cartesia never finishes it and the Spanish is skipped.
+    // only sent once Cartesia has finished generating the English one, so their audio can't get
+    // mixed up. Cartesia generates much faster than real time, so this happens within a fraction
+    // of a second and the Spanish audio is queued on Twilio right behind the English.
+    // Neither part can be interrupted (see greetingIds).
     const english = speech.begin('en');
+    greetingIds.add(english.contextId);
     english.say(GREETING.en);
     english.end();
     const sayInSpanish = (contextId) => {
       if (contextId !== english.contextId) return;
       tts.off('done', sayInSpanish);
       const spanish = speech.begin('es');
+      greetingIds.add(spanish.contextId);
       spanish.say(GREETING.es);
       spanish.end();
     };

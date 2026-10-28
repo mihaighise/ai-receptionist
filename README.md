@@ -15,15 +15,40 @@ Caller ⇄ Twilio phone number
             └─► Cartesia  text-to-speech, streamed back to the caller sentence by sentence
 ```
 
-- **Streaming replies:** Claude's reply is spoken while it's still being written, which keeps the pause before each answer short.
-- **English and Spanish:** the greeting tells callers they can speak Spanish, and the receptionist replies in whichever language the caller is speaking, switching back and forth mid-call. Messages for the owner are always written in English.
-- **Interruptions:** if the caller talks over the receptionist, the audio stops right away and it listens.
-- **Hang-ups:** once the caller hangs up, nothing more is sent to Claude, so no reply is generated and no new message is taken for a call nobody is on.
-- **Cost per call:** when a call ends, the server log shows what it cost: Claude from the tokens used, Deepgram from the billed minutes its API reports, and Twilio from the call's price. The summary appears up to about 2 minutes after the call, once Twilio and Deepgram have billed it.
-- **Tools Claude can use:**
-  - `take_message` takes down the caller's name, callback number and request. The caller can still change it during the call (calling it again replaces it) or cancel it with `cancel_message`. When the call ends, the final version is saved to `data/messages.jsonl` and sent to the owner by SMS and/or WhatsApp, marked **URGENT** when it matches the business's urgency rule. Nothing is sent if it was cancelled.
-  - `transfer_call` forwards the call to a person. It's only offered when a transfer number is set.
-  - `end_call` hangs up after saying goodbye.
+Claude's reply is spoken while it's still being written, sentence by sentence, which keeps the pause before each answer short.
+
+## How a call goes
+
+### 1. Greeting
+As soon as the call connects, the receptionist says "Thanks for calling Sunrise Dental. How can I help you today?", then in Spanish "Si prefiere español, puede hablar en español." The greeting is fixed text, so it plays without waiting for Claude.
+
+The greeting can't be interrupted, because many callers say "Hello?" the moment the call connects. Anything the caller says during it is still heard and answered once it ends.
+
+### 2. Conversation
+- **What it knows:** only the business details in `src/business.js` (address, hours, phone, FAQ). If it doesn't know something, it says so and offers to take a message instead of guessing.
+- **How it speaks:** one or two short spoken sentences at a time, one question at a time, and numbers read out the way a person would.
+- **English and Spanish:** it replies in whichever language the caller is speaking, and switches back and forth mid-call. It only switches when a turn has at least two words and most of them are in the other language, so a lone "ok", "no" or "sí" doesn't flip it. The whole conversation stays in Claude's history, so nothing is forgotten when the caller switches.
+- **Interruptions:** if the caller talks over the receptionist, its audio stops right away and it listens. What it had already said is kept, so Claude knows where it left off.
+
+### 3. Taking a message
+Appointment requests, callbacks and anything the receptionist can't handle become a message for the staff. It works as one message per call:
+
+1. The receptionist collects the caller's name, callback number (offering the number they're calling from) and what they need, then reads it back.
+2. Once the caller confirms, Claude uses `take_message`. The message is kept as a draft for now.
+3. If the caller then changes or adds something ("make it Wednesday instead"), the receptionist reads back the change and calls `take_message` again, which replaces the draft. If they change their mind, `cancel_message` deletes it.
+4. **When the call ends**, the final version is saved to `data/messages.jsonl` and sent to the owner by SMS and/or WhatsApp. A cancelled message is not sent.
+
+Messages are always written in English, translated if the caller spoke Spanish. A message is marked **URGENT** when it matches the business's urgency rule (for the dental clinic: severe pain, swelling, bleeding or a knocked-out tooth).
+
+### 4. Ending the call
+- **The receptionist ends it:** after saying goodbye, Claude uses `end_call`. The goodbye finishes playing before the line hangs up.
+- **Transfer to a person:** if the caller asks for a person, Claude uses `transfer_call` after saying "One moment, I'll put you through." It's only offered when `TRANSFER_NUMBER` is set; otherwise the receptionist offers to take a message.
+- **The caller hangs up:** nothing more is sent to Claude, so no reply is generated and no new message is taken for a call nobody is on. A message the caller already confirmed is still sent.
+
+### 5. Afterwards
+The server log shows what the call cost: Claude from the tokens used, Deepgram from the billed minutes its API reports, and Twilio from the call's price. The summary appears up to about 2 minutes after the call, once Twilio and Deepgram have billed it.
+
+## Files
 
 | File | What it does |
 |---|---|
