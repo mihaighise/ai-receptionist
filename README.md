@@ -29,6 +29,9 @@ The greeting can't be interrupted, because many callers say "Hello?" the moment 
 - **How it speaks:** one or two short spoken sentences at a time, one question at a time, and numbers read out the way a person would.
 - **English and Spanish:** it replies in whichever language the caller is speaking, and switches back and forth mid-call. It only switches when a turn has at least two words and most of them are in the other language, so a lone "ok", "no" or "sí" doesn't flip it. The whole conversation stays in Claude's history, so nothing is forgotten when the caller switches.
 - **Interruptions:** if the caller talks over the receptionist, its audio stops right away and it listens. What it had already said is kept, so Claude knows where it left off.
+  - It takes at least two real words to interrupt ("wait, actually", "no, Tuesday"), so background noise transcribed as a single word doesn't cut it off.
+  - Listening sounds ("mhm", "uh-huh", "ajá") and short answers ("okay", "yeah", "sí") don't interrupt. Sounds alone are ignored, and the receptionist carries on.
+  - A short answer or a one-word turn like "Stop." is still answered once the caller finishes saying it, so a quick "Yes" to "Is that right?" is never lost.
 
 ### 3. Taking a message
 Appointment requests, callbacks and anything the receptionist can't handle become a message for the staff. It works as one message per call:

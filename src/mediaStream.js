@@ -25,6 +25,38 @@ const ECHO = process.env.ECHO === 'true';
 // Safety net when waiting for audio to finish (before a transfer or hangup), in case a mark never comes back.
 const PLAYBACK_TIMEOUT_MS = 15_000;
 
+// Background noise is often transcribed as a single word, and callers say "mhm" or "okay" while
+// listening. So the caller only interrupts the receptionist with at least this many real words
+// ("wait, actually", "no, Tuesday"), not counting sounds or short answers.
+const MIN_INTERRUPT_WORDS = 2;
+// Listening sounds and hesitations, in English and Spanish. Never an answer on their own.
+const SOUNDS = new Set([
+  'uh', 'um', 'umm', 'uhm', 'er', 'ah', 'oh', 'hmm', 'mm', 'mhm', 'mmhmm', 'mm-hmm', 'uh-huh', 'huh',
+  'eh', 'em', 'este', 'pues', 'ajá', 'aja',
+]);
+// Short answers. Often said while listening, so they can't interrupt the receptionist, but they
+// can also be the reply to a question ("Is that right?" "Yes."), so a turn of them is answered.
+const SHORT_ANSWERS = new Set([
+  'ok', 'okay', 'yeah', 'yes', 'yep', 'right', 'sure', 'alright', 'cool',
+  'sí', 'si', 'vale', 'bueno', 'claro', 'ya',
+]);
+const SHORT_ANSWER_PHRASES = /\b(got it|i see|all right|de acuerdo)\b/g;
+
+// The caller's words in lower case, without Deepgram's punctuation ("Uh-huh." -> "uh-huh").
+const words = (text) =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}'-]/gu, ''))
+    .filter(Boolean);
+
+// Words that could be an interruption: not sounds and not short answers.
+const interruptingWords = (text) =>
+  words(text.toLowerCase().replace(SHORT_ANSWER_PHRASES, ' ')).filter((w) => !SOUNDS.has(w) && !SHORT_ANSWERS.has(w)).length;
+
+// True if the text is only listening sounds, e.g. "Mhm." or "Uh, um".
+const onlySounds = (text) => words(text).every((w) => SOUNDS.has(w));
+
 // The language to reply in after a caller turn, given the language Deepgram heard for each word.
 // Short answers like "ok", "no" or "sí" could be either language, so it only switches when the
 // turn has at least two words and most of them are in another language the receptionist speaks.
@@ -135,14 +167,27 @@ export function handleMediaStream(ws) {
     receptionist?.cancel(); // stop Claude writing more
   }
 
-  // "speech" fires as soon as Deepgram recognizes any words (barge-in);
-  // "turn" fires once the caller has finished speaking, with the full text.
+  // True while the receptionist is speaking or Claude is still writing its reply.
+  const talking = () => playing.size > 0 || receptionist?.busy;
+
+  // "speech" fires as soon as Deepgram recognizes words (barge-in): interrupt once there are
+  // enough real words (see MIN_INTERRUPT_WORDS).
+  // "turn" fires once the caller has finished speaking, with the full text. While the receptionist
+  // is talking, a turn of only sounds ("mhm", "uh") is the caller listening, so it's ignored and
+  // the receptionist carries on. Any other turn ("Stop.", "Yes.") is answered, interrupting first,
+  // since it never reached MIN_INTERRUPT_WORDS while being spoken.
   // Both are ignored once the call has ended: closing Deepgram makes it send the results for the
   // last bit of audio, and those must not start a new reply on a call nobody is on anymore.
   let ended = false;
-  stt?.on('speech', () => !ended && interrupt());
+  stt?.on('speech', (text) => {
+    if (!ended && interruptingWords(text) >= MIN_INTERRUPT_WORDS) interrupt();
+  });
   stt?.on('turn', (text, wordLanguages) => {
     if (ended) return;
+    if (talking()) {
+      if (onlySounds(text)) return console.log(`Ignored while talking: ${text}`);
+      interrupt();
+    }
     language = replyLanguage(wordLanguages, language);
     receptionist?.respond(text, language);
   });
