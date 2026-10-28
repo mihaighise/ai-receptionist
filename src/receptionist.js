@@ -11,7 +11,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { appendFile, mkdir } from 'node:fs/promises';
-import { BUSINESS, buildSystemPrompt } from './business.js';
+import { BUSINESS, LANGUAGES, buildSystemPrompt } from './business.js';
 import { getTwilioClient } from './twilio.js';
 
 // Reads ANTHROPIC_API_KEY from the environment.
@@ -130,6 +130,8 @@ export class Receptionist {
   #running = Promise.resolve();
   // Set once the call has been transferred or hung up; nothing more is said after that.
   #ended = false;
+  // The language of the current turn ('en' or 'es'); replies are spoken in it.
+  #language = 'en';
 
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
   // call: { callSid, from, to, waitForPlayback(), transfer(), hangup() }
@@ -150,10 +152,11 @@ export class Receptionist {
   // The new turn is chained after the previous one, so a tool that is still running finishes
   // and records its result before the caller's new words are added. Claude requires every
   // tool request to be answered before the conversation continues.
-  respond(text) {
+  // language is the code ('en' or 'es') the caller is speaking, chosen in mediaStream.js.
+  respond(text, language = 'en') {
     this.cancel();
     const turn = this.#turn;
-    this.#running = this.#running.then(() => this.#run(turn, text));
+    this.#running = this.#running.then(() => this.#run(turn, text, language));
     return this.#running;
   }
 
@@ -165,10 +168,14 @@ export class Receptionist {
 
   // Handles one caller turn: ask Claude, run any tools it asks for, and repeat until Claude
   // has given a plain spoken answer (or the turn was cancelled, or the call ended).
-  async #run(turn, text) {
+  async #run(turn, text, language) {
     if (this.#ended) return;
-    console.log(`Caller: ${text}`);
-    this.#messages.push({ role: 'user', content: text });
+    this.#language = language;
+    console.log(`Caller (${language}): ${text}`);
+    // The tag tells Claude which language to reply in (see the system prompt), so the words it
+    // writes always match the language the voice speaks them in. Earlier turns stay in the
+    // history in whatever language they were said, so nothing is forgotten when the caller switches.
+    this.#messages.push({ role: 'user', content: `[${LANGUAGES[language]}] ${text}` });
 
     try {
       while (turn === this.#turn && !this.#ended) {
@@ -177,7 +184,10 @@ export class Receptionist {
 
         // Claude's safety checks declined to answer. Its partial reply isn't kept in the history.
         if (message.stop_reason === 'refusal') {
-          this.#say("Sorry, I can't help with that. Is there anything else I can do for you?");
+          this.#say({
+            en: "Sorry, I can't help with that. Is there anything else I can do for you?",
+            es: 'Lo siento, no puedo ayudarle con eso. ¿Hay algo más en lo que pueda ayudarle?',
+          });
           return;
         }
         // Keep the full content (text and tool requests) exactly as Claude returned it.
@@ -197,7 +207,10 @@ export class Receptionist {
       }
     } catch (err) {
       console.error('Receptionist error:', err);
-      this.#say("Sorry, I'm having trouble right now. Please call back in a few minutes.");
+      this.#say({
+        en: "Sorry, I'm having trouble right now. Please call back in a few minutes.",
+        es: 'Lo siento, tengo problemas en este momento. Por favor, vuelva a llamar en unos minutos.',
+      });
     }
   }
 
@@ -224,7 +237,7 @@ export class Receptionist {
     let usage = null;
     stream.on('streamEvent', (_event, snapshot) => (usage = snapshot.usage));
 
-    const reply = this.speech.begin();
+    const reply = this.speech.begin(this.#language);
     let spoken = ''; // everything Claude has written for this reply
     let buffer = ''; // text not yet sent to the voice (an unfinished sentence)
     stream.on('text', (delta) => {
@@ -260,10 +273,11 @@ export class Receptionist {
     }
   }
 
-  // Speak a fixed sentence without asking Claude (used for error and refusal messages).
-  #say(text) {
-    const reply = this.speech.begin();
-    reply.say(text);
+  // Speak a fixed sentence without asking Claude (used for error and refusal messages),
+  // given as { en, es } so it's said in the caller's language.
+  #say(texts) {
+    const reply = this.speech.begin(this.#language);
+    reply.say(texts[this.#language] ?? texts.en);
     reply.end();
   }
 

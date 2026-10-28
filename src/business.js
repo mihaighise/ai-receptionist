@@ -30,8 +30,15 @@ export const BUSINESS = {
   },
 };
 
-// Spoken as soon as the call connects, without waiting for Claude.
-export const GREETING = `Thanks for calling ${BUSINESS.name}. How can I help you today?`;
+// The languages the receptionist speaks: the code Deepgram and Cartesia use, and the name Claude is told.
+export const LANGUAGES = { en: 'English', es: 'Spanish' };
+
+// Spoken as soon as the call connects, without waiting for Claude. Each part is spoken in its
+// own language; the Spanish line lets Spanish speakers know they can switch.
+export const GREETING = {
+  en: `Thanks for calling ${BUSINESS.name}. How can I help you today?`,
+  es: 'Si prefiere español, puede hablar en español.',
+};
 
 // Builds Claude's instructions for one call: who it is, the business facts, how to speak on
 // the phone, and what it's allowed to do. The tool rules here must match the tools offered
@@ -56,8 +63,13 @@ Business details:
 - Phone: ${BUSINESS.phone}
 ${BUSINESS.faq.map((line) => `- ${line}`).join('\n')}
 
-The call has already started and you greeted the caller with: "${GREETING}"
+The call has already started and you greeted the caller with: "${GREETING.en} ${GREETING.es}"
 The caller's phone number is ${callerNumber || 'unknown'}.
+
+Language:
+- You speak English and Spanish. Each caller message starts with a tag such as [English] or [Spanish] that says which language to reply in. Always reply only in that language, and never say the tag.
+- The business details above are in English; translate them naturally when replying in Spanish.
+- Always write take_message fields in English, translating what the caller said, so the staff can read every message.
 
 How to speak:
 - Everything you write is read aloud by a text-to-speech voice, so write plain spoken sentences: no lists, markdown, emojis or abbreviations.

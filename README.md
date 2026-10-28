@@ -16,6 +16,7 @@ Caller ⇄ Twilio phone number
 ```
 
 - **Streaming replies:** Claude's reply is spoken while it's still being written, which keeps the pause before each answer short.
+- **English and Spanish:** the greeting tells callers they can speak Spanish, and the receptionist replies in whichever language the caller is speaking, switching back and forth mid-call. Messages for the owner are always written in English.
 - **Interruptions:** if the caller talks over the receptionist, the audio stops right away and it listens.
 - **Tools Claude can use:**
   - `take_message` saves the caller's name, callback number and request to `data/messages.jsonl`, and sends it to the owner by SMS and/or WhatsApp, marked **URGENT** when it matches the business's urgency rule.
@@ -67,6 +68,8 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 | `ANTHROPIC_API_KEY` | yes | Claude API key. The API is billed separately from Claude.ai subscriptions |
 | `DEEPGRAM_API_KEY` | yes | Speech-to-text |
 | `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` | yes | Text-to-speech key, and a voice ID from the Cartesia voice library |
+| `CARTESIA_VOICE_ID_ES` | no | A different voice for Spanish replies. Without it the same voice speaks both languages |
+| `DEEPGRAM_LANGUAGE` | no | `multi` (default) hears English and Spanish; `en` for English only |
 | `TRANSFER_NUMBER` | no | Number to forward callers to when they ask for a person. Leave empty to disable transfers |
 | `OWNER_SMS_NUMBER` | no | Owner's mobile; each message is texted here. Texts to US numbers need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance), otherwise they fail with error 30034 |
 | `OWNER_WHATSAPP_NUMBER` | no | Owner's WhatsApp number; each message is also sent here |

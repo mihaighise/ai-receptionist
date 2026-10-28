@@ -1,5 +1,9 @@
 // Deepgram streaming speech-to-text for one call.
-// Emits "speech" (any recognized words, used to detect barge-in) and "turn" (the caller finished speaking).
+// Emits "speech" (any recognized words, used to detect barge-in) and "turn" (the caller finished
+// speaking), with the text and the language of each word, e.g. ['es', 'es', 'en'].
+//
+// language=multi lets Deepgram hear English and Spanish in the same call, including the caller
+// switching between them, and tag each word with the language it was in.
 //
 // We stream raw call audio to Deepgram over a WebSocket and it sends back "Results" messages:
 //   - interim results: a quick guess at the words so far, which may still change
@@ -15,6 +19,7 @@ export class DeepgramSTT extends EventEmitter {
   #ws;
   #pending = []; // audio received before the socket finished connecting
   #finals = []; // final pieces of the turn the caller is still speaking
+  #languages = []; // the language of each word in #finals
   // Deepgram's ID for this stream, used after the call to look up what it cost (see costs.js).
   requestId = null;
 
@@ -22,6 +27,7 @@ export class DeepgramSTT extends EventEmitter {
     super();
     const params = new URLSearchParams({
       model: process.env.DEEPGRAM_MODEL ?? 'nova-3',
+      language: process.env.DEEPGRAM_LANGUAGE ?? 'multi', // any of the languages nova-3 knows, mixed freely
       encoding: 'mulaw', // Twilio sends 8kHz mono mu-law, which Deepgram accepts as-is
       sample_rate: '8000',
       channels: '1',
@@ -53,9 +59,13 @@ export class DeepgramSTT extends EventEmitter {
     if (msg.type === 'Results') {
       this.requestId ??= msg.metadata?.request_id ?? null;
       // alternatives[0] is Deepgram's best guess. Empty transcripts are silence or noise.
-      const text = msg.channel?.alternatives?.[0]?.transcript?.trim();
+      const best = msg.channel?.alternatives?.[0];
+      const text = best?.transcript?.trim();
       if (text) this.emit('speech', text);
-      if (msg.is_final && text) this.#finals.push(text);
+      if (msg.is_final && text) {
+        this.#finals.push(text);
+        for (const word of best.words ?? []) this.#languages.push(word.language);
+      }
       if (msg.speech_final) this.#endTurn();
     } else if (msg.type === 'UtteranceEnd') {
       // Backup signal: sent after utterance_end_ms of no words, e.g. when background
@@ -70,8 +80,9 @@ export class DeepgramSTT extends EventEmitter {
   // nothing collected and does nothing.
   #endTurn() {
     if (this.#finals.length === 0) return;
-    this.emit('turn', this.#finals.join(' '));
+    this.emit('turn', this.#finals.join(' '), this.#languages);
     this.#finals = [];
+    this.#languages = [];
   }
 
   // Raw mu-law audio from Twilio.
