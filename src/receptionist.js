@@ -133,9 +133,11 @@ export class Receptionist {
 
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
   // call: { callSid, from, to, waitForPlayback(), transfer(), hangup() }
-  constructor({ speech, call }) {
+  // costs: a CallCosts (costs.js) that adds up the tokens used
+  constructor({ speech, call, costs }) {
     this.speech = speech;
     this.call = call;
+    this.costs = costs;
     // Built once per call; it includes this caller's number.
     this.#system = buildSystemPrompt({ callerNumber: call.from });
   }
@@ -218,6 +220,9 @@ export class Receptionist {
       messages: this.#messages,
     });
     this.#stream = stream;
+    // The stream's running snapshot includes token usage, so interrupted replies are counted too.
+    let usage = null;
+    stream.on('streamEvent', (_event, snapshot) => (usage = snapshot.usage));
 
     const reply = this.speech.begin();
     let spoken = ''; // everything Claude has written for this reply
@@ -251,6 +256,7 @@ export class Receptionist {
       return null;
     } finally {
       if (this.#stream === stream) this.#stream = null;
+      this.costs?.addClaude(MODEL, usage);
     }
   }
 

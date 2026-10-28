@@ -15,6 +15,8 @@ export class DeepgramSTT extends EventEmitter {
   #ws;
   #pending = []; // audio received before the socket finished connecting
   #finals = []; // final pieces of the turn the caller is still speaking
+  // Deepgram's ID for this stream, used after the call to look up what it cost (see costs.js).
+  requestId = null;
 
   constructor() {
     super();
@@ -33,6 +35,8 @@ export class DeepgramSTT extends EventEmitter {
       headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` },
     });
 
+    // Deepgram returns the request ID as a header when the WebSocket connects.
+    this.#ws.on('upgrade', (res) => (this.requestId = res.headers['dg-request-id'] ?? null));
     // Send the audio that arrived while connecting, so the start of the call isn't lost.
     this.#ws.on('open', () => {
       for (const chunk of this.#pending) this.#ws.send(chunk);
@@ -47,6 +51,7 @@ export class DeepgramSTT extends EventEmitter {
 
   #onMessage(msg) {
     if (msg.type === 'Results') {
+      this.requestId ??= msg.metadata?.request_id ?? null;
       // alternatives[0] is Deepgram's best guess. Empty transcripts are silence or noise.
       const text = msg.channel?.alternatives?.[0]?.transcript?.trim();
       if (text) this.emit('speech', text);

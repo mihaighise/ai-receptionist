@@ -18,6 +18,7 @@ import { CartesiaTTS } from './tts.js';
 import { Receptionist } from './receptionist.js';
 import { BUSINESS, GREETING } from './business.js';
 import { getTwilioClient } from './twilio.js';
+import { CallCosts } from './costs.js';
 
 // ECHO=true skips the AI entirely and plays the caller's audio back, to test the stream itself.
 const ECHO = process.env.ECHO === 'true';
@@ -53,6 +54,8 @@ export function handleMediaStream(ws) {
   const stt = ECHO ? null : new DeepgramSTT();
   const tts = ECHO ? null : new CartesiaTTS();
   let receptionist = null;
+  // Adds up what this call uses, printed as a cost summary when the call ends.
+  const costs = new CallCosts();
 
   // Replies (TTS contexts) that are generating or still playing on the call.
   // A reply is added when its first text is sent to Cartesia and removed when Twilio returns its
@@ -113,6 +116,7 @@ export function handleMediaStream(ws) {
   function startReceptionist({ from, to }) {
     receptionist = new Receptionist({
       speech,
+      costs,
       call: {
         callSid,
         from,
@@ -152,11 +156,19 @@ export function handleMediaStream(ws) {
     }
   }
 
-  // Close everything for this call. Can run twice ("stop" and then "close"), which is harmless.
+  // Close everything for this call. Can run twice ("stop" and then "close"), so the cost
+  // summary is only started once.
+  let reported = false;
   function cleanup() {
     receptionist?.cancel();
     stt?.close();
     tts?.close();
+    if (!ECHO && !reported && callSid) {
+      reported = true;
+      costs.audioSeconds = frames * 0.02;
+      costs.deepgramRequestId = stt?.requestId;
+      costs.report(callSid).catch((err) => console.error('Could not report call costs:', err.message));
+    }
   }
 
   ws.on('message', (data) => {
