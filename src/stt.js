@@ -1,5 +1,6 @@
 // Deepgram streaming speech-to-text for one call.
-// Emits "speech" (any recognized words, used to detect barge-in) and "turn" (the caller finished
+// Emits "speech" (everything recognized so far in the turn the caller is speaking, used to detect
+// barge-in) and "turn" (the caller finished
 // speaking), with the text and the language of each word, e.g. ['es', 'es', 'en'].
 //
 // language=multi lets Deepgram hear English and Spanish in the same call, including the caller
@@ -61,7 +62,8 @@ export class DeepgramSTT extends EventEmitter {
       // alternatives[0] is Deepgram's best guess. Empty transcripts are silence or noise.
       const best = msg.channel?.alternatives?.[0];
       const text = best?.transcript?.trim();
-      if (text) this.emit('speech', text);
+      // Include the earlier final pieces of this turn, so "wait" + "actually" counts as two words.
+      if (text) this.emit('speech', [...this.#finals, text].join(' '));
       if (msg.is_final && text) {
         this.#finals.push(text);
         for (const word of best.words ?? []) this.#languages.push(word.language);
