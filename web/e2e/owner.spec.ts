@@ -33,8 +33,11 @@ test('a signed-in owner without a business is offered setup', async ({ page, sig
   await signIn({ name: 'Maria Lopez' });
   await page.goto('/sign-in');
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Welcome, Maria' })).toBeVisible();
-  await expect(page.getByText('Signed in as owner@example.com')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Maria$/ })).toBeVisible();
+  // Who's signed in is in the account menu.
+  await page.getByRole('button', { name: 'Account' }).locator('visible=true').click();
+  await expect(page.getByRole('menu').getByText('owner@example.com')).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('link', { name: 'Get started' }).click();
   await expect(page).toHaveURL('/setup');
 });
@@ -52,14 +55,15 @@ test('the dashboard shows the owner’s receptionist', async ({ page, signIn }) 
   await page.goto('/');
   await expect(page.getByText('Rapid Flow Plumbing')).toBeVisible();
   await expect(page.getByText('Answering calls')).toBeVisible();
-  await expect(page.getByText('+1 (831) 249-0526')).toBeVisible();
+  await expect(page.getByText('+1 (831) 249-0526', { exact: true })).toBeVisible();
   await expect(page.getByText('English and Spanish')).toBeVisible();
 });
 
 test('signing out closes the dashboard', async ({ page, signIn }) => {
   await signIn();
   await page.goto('/');
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Account' }).locator('visible=true').click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('/sign-in');
   await page.goto('/');
   await expect(page).toHaveURL('/sign-in');
