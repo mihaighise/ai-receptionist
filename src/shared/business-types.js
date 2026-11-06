@@ -76,6 +76,24 @@ export const BUSINESS_TYPES = {
       'Please arrive ___ minutes early for your first appointment.',
     ],
   },
+  real_estate: {
+    label: 'Real estate',
+    examples: 'Agents, brokerages, property management, rentals',
+    skills: ['messages', 'transfers'],
+    placeholders: {
+      description: 'a real estate brokerage in Miami helping families buy, sell and rent homes',
+      hours: 'Monday to Saturday 9am to 7pm, showings by appointment',
+      urgent_when: 'the caller wants to see a property today or is ready to make an offer',
+    },
+    faq: [
+      'We help clients buy, sell and rent homes in ___.',
+      'To book a showing, leave your name, number and the property address, and an agent will call you back.',
+      'We offer a free home valuation for sellers.',
+      'We manage rental properties in ___; tenants can leave maintenance requests with us.',
+      'Our agents speak English and ___.',
+      'Our office is at ___, with parking at ___.',
+    ],
+  },
   other: {
     label: 'Something else',
     examples: 'Shops, offices, studios and any other business',

@@ -75,3 +75,30 @@ test("changing the type while editing keeps the owner's skills", async ({ page, 
   const { rows } = await pool.query('SELECT business_type, features FROM businesses WHERE owner_id = $1', [user.id]);
   expect(rows).toEqual([{ business_type: 'clinic', features: ['messages'] }]);
 });
+
+test('real estate starts with messages and transfers, and real estate examples and ideas', async ({ page, signIn }) => {
+  const { user } = await signIn();
+  await page.goto('/setup');
+  await page.getByText('Real estate', { exact: true }).click();
+  await expect(page.getByLabel('What does your business do?')).toHaveAttribute('placeholder', /real estate brokerage/);
+  await page.getByLabel('Business name').fill('Sunshine Realty');
+  await page.getByLabel('What does your business do?').fill('a real estate brokerage in Miami');
+  for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Next' }).click();
+
+  await expect(page.getByLabel('Take messages for the staff')).toBeChecked();
+  await expect(page.getByLabel('Transfer callers to a person')).toBeChecked();
+  await expect(page.getByLabel('Mark a message urgent if…')).toHaveAttribute('placeholder', /see a property today/);
+  await page.getByLabel('Text messages to').fill('305 555 0100');
+  await page.getByLabel('Transfer callers to', { exact: true }).fill('305 555 0199');
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  const idea = 'We offer a free home valuation for sellers.';
+  await page.getByRole('list', { name: 'Ideas' }).getByRole('button', { name: idea }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await expect(page).toHaveURL('/plan');
+  const { rows } = await pool.query('SELECT business_type, features, faq FROM businesses WHERE owner_id = $1', [
+    user.id,
+  ]);
+  expect(rows).toEqual([{ business_type: 'real_estate', features: ['messages', 'transfers'], faq: [idea] }]);
+});

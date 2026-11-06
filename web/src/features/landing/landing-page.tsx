@@ -5,6 +5,7 @@ import {
   Clock3,
   CreditCard,
   Headset,
+  House,
   Languages,
   MessageSquareText,
   PhoneForwarded,
@@ -14,6 +15,7 @@ import {
   Scissors,
   Sparkles,
   Stethoscope,
+  Store,
   UtensilsCrossed,
   Wrench,
 } from 'lucide-react';
@@ -155,6 +157,16 @@ const INDUSTRIES: { icon: typeof Wrench; title: string; text: string }[] = [
     icon: Stethoscope,
     title: 'Dental and medical offices',
     text: 'New-patient and insurance questions answered, and patients in pain flagged urgent for the team.',
+  },
+  {
+    icon: House,
+    title: 'Real estate',
+    text: 'Every buyer and seller lead captured, showing requests taken as messages, and hot leads put straight through to an agent.',
+  },
+  {
+    icon: Store,
+    title: 'Any business that answers the phone',
+    text: 'Shops, offices and studios: start from a blank page and tell it what your callers ask.',
   },
 ];
 
@@ -429,7 +441,7 @@ export function LandingPage() {
           <SectionTitle eyebrow="Made for your business" title="Set up for the way you work">
             Pick your kind of business and start from questions and examples that already fit.
           </SectionTitle>
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {INDUSTRIES.map((industry) => (
               <div key={industry.title} className={cn(glass, 'flex gap-4 p-6')}>
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/5 text-violet-200 ring-1 ring-white/10">
