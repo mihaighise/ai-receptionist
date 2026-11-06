@@ -8,6 +8,8 @@ import { pool } from '../src/shared/db/pool.js';
 import { startApi } from './support/api.js';
 import { emptyTestDatabase, setUpTestDatabase } from './support/database.js';
 import { fakeStripe, subscription, WEBHOOK_SECRET } from './support/fake-stripe.js';
+import { fakeTwilio } from './support/fake-twilio.js';
+import { createPhoneNumbers } from '../src/api/phone-numbers.js';
 import { signedInOwner } from './support/owners.js';
 
 const settings = { name: 'Rapid Flow Plumbing', description: 'a plumber', languages: ['en'], features: [] };
@@ -326,4 +328,43 @@ test('the dashboard gets this month’s minutes from the billing month Stripe re
     periodStart: new Date(1793400000 * 1000).toISOString(),
     periodEnd: new Date(1796000000 * 1000).toISOString(),
   });
+});
+
+// --- Phone numbers ---
+
+test('once the plan is paid for, the business gets its phone number and answers calls', async () => {
+  const twilio = fakeTwilio({ available: { '': ['+12025550123'] } });
+  const withNumbers = await startApi({
+    stripe: fake.stripe,
+    stripeWebhookSecret: WEBHOOK_SECRET,
+    phoneNumbers: createPhoneNumbers({ mode: 'live', twilio: twilio.twilio, publicUrl: 'https://phone.test' }),
+  });
+  try {
+    const owner = await signedInOwner();
+    await saveOwnerBusiness(owner.user.id, settings);
+    await withNumbers.request('POST', '/owner/billing/checkout', { cookie: owner.cookie, body: { plan: 'pro' } });
+    const sub = subscription({ customer: 'cus_1' });
+    fake.state.subscriptions.set(sub.id, sub);
+    const { payload, signature } = fake.webhook('customer.subscription.created', sub);
+    await withNumbers.request('POST', '/stripe/webhook', { raw: payload, headers: { 'Stripe-Signature': signature } });
+
+    const { body } = await withNumbers.request('GET', '/owner/me', { cookie: owner.cookie });
+    assert.equal(body.business.twilio_number, '+12025550123');
+    assert.ok(await findBusinessByNumber('+12025550123'));
+    // Stripe sending the event again doesn't buy another.
+    await withNumbers.request('POST', '/stripe/webhook', { raw: payload, headers: { 'Stripe-Signature': signature } });
+    assert.equal(twilio.calls.filter(([name]) => name === 'buy').length, 1);
+  } finally {
+    await withNumbers.close();
+  }
+});
+
+test('by default (dry run) paying records the order but buys nothing', async () => {
+  const { cookie, business } = await ownerWithBusiness();
+  await pool.query('UPDATE businesses SET twilio_number = NULL WHERE id = $1', [business.id]);
+  await checkout(cookie);
+  await sendWebhook('customer.subscription.created', subscription({ customer: 'cus_1' }));
+  const { rows } = await pool.query('SELECT status FROM phone_number_orders WHERE business_id = $1', [business.id]);
+  assert.deepEqual(rows, [{ status: 'dry_run' }]);
+  assert.equal((await businessRow(business.id)).twilio_number, null);
 });

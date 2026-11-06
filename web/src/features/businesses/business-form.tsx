@@ -26,6 +26,7 @@ import {
   toInput,
 } from './business-schema';
 import { DeleteBusinessButton } from './delete-business-button';
+import { NumberOrderStatus } from './number-order-status';
 import { PreviewPanel } from './preview-panel';
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
@@ -225,6 +226,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
             {...register('twilio_number')}
           />
         </FormField>
+        {business && <NumberOrderStatus businessId={business.id} />}
       </Section>
 
       <Section title="Languages">

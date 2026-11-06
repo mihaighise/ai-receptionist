@@ -69,7 +69,6 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `mediaStream.js` | Runs one call: loads its business, routes audio between Twilio, Deepgram and Cartesia, and handles interruptions |
 | `receptionist.js` | The conversation with Claude, and the tools the business has turned on |
 | `stt.js` / `tts.js` | Deepgram and Cartesia WebSocket clients |
-| `twilio.js` | Shared Twilio REST client, used for transfers, hangups and alerts |
 | `costs.js` | Adds up what each call used and prints its cost per service when the call ends |
 
 **`src/api/`: the backend for the web apps** (`npm run api`)
@@ -84,6 +83,7 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `billing.js` | Subscriptions with Stripe: Checkout, the billing page, and keeping each business's copy of its subscription up to date |
 | `stripe-webhook.js` | `/api/stripe/webhook`: Stripe's notifications about subscriptions |
 | `stripe-setup.js` | Creates the plans and billing page settings in Stripe (`npm run stripe:setup`) |
+| `phone-numbers.js` | Buys a paying business its Twilio number and points it at the phone server (dry run by default) |
 | `auth.js` | Owner sign-in with Better Auth (`/api/auth/...`): Google now, Microsoft and Apple later |
 | `auth-sql.js` | Prints the SQL Better Auth needs after an upgrade (`npm run db:auth-sql`) |
 
@@ -94,6 +94,7 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `businesses.js` | Reads and writes businesses in the database |
 | `users.js` | Looks up people who have signed in (the table belongs to Better Auth) |
 | `plans.js` | The plans, their prices and minutes, extra minutes, and which subscription statuses count as paid |
+| `twilio.js` | Shared Twilio REST client: transfers, hangups, alerts and buying numbers |
 | `usage.js` | Counts call minutes: records each call, uses extra minutes past the plan's, and decides whether a new call is answered |
 | `prompt.js` | Builds the greeting and Claude's instructions from a business |
 | `languages.js` | The languages the receptionist can speak, with the greeting lines in each |
@@ -186,7 +187,7 @@ Changes apply from the next call. No restart is needed.
 
 Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.
 
-A new owner's business has no Twilio number, so it gets no calls until you add one in the admin site (buying one automatically comes next). You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
+A new owner's business has no Twilio number until its plan is paid for; then one is bought automatically (see Phone numbers below), or you add one in the admin site. You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
 
 **Setting up Google sign-in** (once):
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or pick one), then go to **APIs & Services → OAuth consent screen** and set it up: app name, support email, and **External** users. While the app is in **Testing**, only the test users you add there can sign in.
@@ -212,6 +213,13 @@ Owners pay with Stripe. Businesses they set up themselves only answer calls whil
 - **Plan changes**: an upgrade's minutes apply straight away (Stripe charges the difference for the rest of the month); after a downgrade the current plan and its minutes last until the month ends.
 - **Out of minutes**: a call in progress is never cut off. New calls go straight to the business's transfer number if transfers are on; otherwise callers hear "Sorry, we can't take your call right now. Please call back later."
 - Businesses that don't need a plan (the demo businesses) have no limit.
+
+**Phone numbers** (`src/api/phone-numbers.js`): once a business's plan is paid for and it has no number, the API buys it a local Twilio number (with voice and SMS) in the area code of its own business phone, or anywhere in the US if that area has none, and points the number's voice webhook at `PUBLIC_URL/incoming-call`. At most one number is bought per business, however many payment events arrive; a failed purchase (no numbers, not enough credit) is recorded and tried again on the next event. The admin site shows each business's latest order under its Twilio number. `TWILIO_BUY_NUMBERS` sets what happens:
+- `dry-run` (the default): records what would be bought, without calling Twilio. The business keeps waiting for a number.
+- `live`: buys it, from your Twilio balance (about $1.15 a month per US local number). Texts from US numbers also need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance). A trial account can only have one number.
+- `off`: numbers are only added in the admin site.
+
+Numbers aren't released when a plan ends yet; release them in the Twilio console.
 
 **Setting up Stripe** (once, in test mode):
 1. In the [Stripe Dashboard](https://dashboard.stripe.com), switch to test mode (or a sandbox), open **Developers → API keys** and put the secret key (`sk_test_...`) in `STRIPE_SECRET_KEY` in `.env`.
@@ -265,6 +273,7 @@ The browser tests start their own API (port 3101) and web app (port 5199), so th
 | `BETTER_AUTH_URL` | yes | The address owners open the web app on (`http://localhost:5173` in development; Docker sets its own) |
 | `BETTER_AUTH_SECRET` | yes | Signs owners' session cookies. Make one with `openssl rand -base64 32`. Changing it signs everyone out |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google sign-in keys (see Owner app above). Without them nobody can sign in |
+| `TWILIO_BUY_NUMBERS` | no | `dry-run` (default), `live` or `off`: whether paying businesses get a Twilio number bought for them (see Phone numbers above) |
 | `STRIPE_SECRET_KEY` | for billing | Stripe API key (see Billing above). Without it, owners can't choose a plan |
 | `STRIPE_WEBHOOK_SECRET` | for billing | Checks that webhooks come from Stripe: from `stripe listen --print-secret` locally, or the endpoint's signing secret in the Stripe Dashboard |
 | `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |

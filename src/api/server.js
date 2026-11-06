@@ -33,6 +33,7 @@ try {
 }
 
 const app = createApp({ adminPassword: ADMIN_PASSWORD });
+console.log(`Twilio numbers for paying businesses: ${process.env.TWILIO_BUY_NUMBERS || 'dry-run'}`);
 
 app.listen(PORT, HOST, () => {
   console.log(`API: http://localhost:${PORT}/api${ADMIN_PASSWORD ? '' : ' (no ADMIN_PASSWORD set)'}`);

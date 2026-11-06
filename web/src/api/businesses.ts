@@ -53,6 +53,16 @@ export interface Options {
   features: { code: string; label: string }[];
 }
 
+// The latest automatic Twilio number order for a business (src/api/phone-numbers.js).
+export interface NumberOrder {
+  // dry_run: what would have been bought; buying; bought; failed (see error).
+  status: 'dry_run' | 'buying' | 'bought' | 'failed';
+  area_code: string | null;
+  phone_number: string | null;
+  error: string | null;
+  created_at: string;
+}
+
 export interface Preview {
   greeting: { language: string; languageName: string; text: string }[];
   prompt: string;
@@ -83,6 +93,12 @@ export function useDeleteBusiness() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: LIST_KEY }),
   });
 }
+
+export const useNumberOrder = (id: string) =>
+  useQuery({
+    queryKey: ['number-order', id],
+    queryFn: () => api<NumberOrder | null>('GET', `/admin/businesses/${id}/number-order`),
+  });
 
 // The greeting and Claude's instructions for unsaved form values.
 export const usePreview = () =>

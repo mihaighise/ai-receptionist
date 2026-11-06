@@ -16,7 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { LANGUAGES } from '../shared/languages.js';
 import { buildSystemPrompt } from '../shared/prompt.js';
-import { getTwilioClient } from './twilio.js';
+import { getTwilioClient } from '../shared/twilio.js';
 
 // Reads ANTHROPIC_API_KEY from the environment.
 const client = new Anthropic();

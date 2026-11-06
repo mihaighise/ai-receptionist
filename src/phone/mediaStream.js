@@ -21,7 +21,7 @@ import { Receptionist } from './receptionist.js';
 import { findBusinessById } from '../shared/businesses.js';
 import { buildGreeting } from '../shared/prompt.js';
 import { recordCall } from '../shared/usage.js';
-import { getTwilioClient } from './twilio.js';
+import { getTwilioClient } from '../shared/twilio.js';
 import { CallCosts } from './costs.js';
 
 // ECHO=true skips the AI entirely and plays the caller's audio back, to test the stream itself.
