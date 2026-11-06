@@ -1,7 +1,7 @@
 // The owner app's data from the API (/api/owner): who is signed in and their business.
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Business, Options, Preview } from './businesses';
+import type { BookingSettings, Business, Options, Preview } from './businesses';
 import { api } from './client';
 
 export interface Me {
@@ -85,7 +85,7 @@ export type BusinessSettings = Pick<
   | 'notify_sms'
   | 'notify_whatsapp'
   | 'urgent_when'
->;
+> & { booking_settings: BookingSettings };
 
 // The languages and features to choose from. They only change with the server code.
 export const useOwnerOptions = () =>
@@ -191,6 +191,17 @@ export interface Call {
   transferred: boolean;
   // The message taken on the call, if any.
   message: { caller_name: string; callback_number: string; message: string; urgent: boolean } | null;
+  // Appointments booked on the call.
+  bookings: Booking[];
+}
+
+export interface Booking {
+  service: string;
+  starts_at: string;
+  ends_at: string;
+  caller_name: string;
+  caller_number: string;
+  notes: string;
 }
 
 // The business's calls, newest first, `pageSize` at a time (fetchNextPage loads more).
@@ -207,3 +218,57 @@ export const useCalls = (pageSize = 50) =>
     // New calls show up without reloading the page.
     refetchInterval: 60_000,
   });
+
+// The owner's calendar, for booking appointments (src/api/owner/calendar-routes.js).
+export interface CalendarStatus {
+  connected: boolean;
+  // False when the server has no Google keys, so it can't be connected.
+  available: boolean;
+  email?: string | null;
+  // The calendar bookings go into, and the ones to choose from.
+  calendarId?: string;
+  calendars?: { id: string; name: string; primary: boolean }[];
+}
+
+const CALENDAR_KEY = ['owner', 'calendar'];
+
+export const useCalendar = () =>
+  useQuery({ queryKey: CALENDAR_KEY, queryFn: () => api<CalendarStatus>('GET', '/owner/calendar') });
+
+// Opens Google's page to allow access in a popup (so the setup's unsaved answers stay on the
+// page), and loads the status again when it says it's done, or is closed. onDone: ok, or why not.
+export function useConnectCalendar(onDone: (result: { ok: boolean; message?: string }) => void) {
+  const queryClient = useQueryClient();
+  return () => {
+    const popup = window.open('/api/owner/calendar/connect', 'oriana-calendar', 'width=520,height=680');
+    if (!popup) return onDone({ ok: false, message: 'Allow pop-ups for this site, then try again.' });
+    const finish = () => {
+      window.removeEventListener('message', onMessage);
+      clearInterval(closed);
+      queryClient.invalidateQueries({ queryKey: CALENDAR_KEY });
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'oriana-calendar') return;
+      finish();
+      onDone({ ok: Boolean(event.data.ok), message: event.data.message });
+    };
+    window.addEventListener('message', onMessage);
+    const closed = window.setInterval(() => popup.closed && finish(), 500);
+  };
+}
+
+export function useChooseCalendar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (calendarId: string) => api<{ calendarId: string }>('PUT', '/owner/calendar', { calendarId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CALENDAR_KEY }),
+  });
+}
+
+export function useDisconnectCalendar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<null>('DELETE', '/owner/calendar'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CALENDAR_KEY }),
+  });
+}

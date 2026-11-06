@@ -25,10 +25,12 @@ export function buildGreeting({ name, languages }) {
 // Builds Claude's instructions for one call: who it is, the business facts, how to speak on
 // the phone, and what it's allowed to do. Each skill on the call (src/skills) adds its own lines,
 // the same skills whose tools receptionist.js offers.
-export function buildSystemPrompt(business, { callerNumber }) {
+export function buildSystemPrompt(business, { callerNumber, now = new Date() }) {
   const { languages } = business;
   const skills = liveSkills(business);
-  const lines = (part) => skills.flatMap((skill) => skill.prompt?.[part]?.(business) ?? []);
+  const lines = (part) => skills.flatMap((skill) => skill.prompt?.[part]?.(business, { now }) ?? []);
+  // Whether a skill books appointments itself.
+  const books = skills.some((skill) => skill.books);
   // Whether the receptionist can offer a callback (taking a message) instead of guessing.
   const followUp = skills.some((skill) => skill.followUp);
   const greeting = buildGreeting(business).map((part) => part.text).join(' ');
@@ -50,7 +52,9 @@ export function buildSystemPrompt(business, { callerNumber }) {
       : "- Answer questions using only the business details above. If you don't know something, say so rather than guessing.",
     ...lines('capabilities'),
     !followUp &&
-      "- You can't book appointments or take messages. If the caller needs something you can't handle, suggest they call back during opening hours.",
+      (books
+        ? "- You can't take messages. If the caller needs something you can't handle, suggest they call back during opening hours."
+        : "- You can't book appointments or take messages. If the caller needs something you can't handle, suggest they call back during opening hours."),
     lines('handoff')[0] ??
       (followUp
         ? '- No one is available to take calls right now; if the caller asks for a person, offer to take a message so the team can call them back.'

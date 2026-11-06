@@ -80,7 +80,8 @@ export default {
       '- Always write take_message fields in English, translating what the caller said, so the staff can read every message.',
     ],
     capabilities: ({ actions }) => [
-      `- To book, change or cancel an appointment, or for anything you can't handle yourself, take a message with the take_message tool: get the caller's name, the best callback number (offer to use the number they're calling from) and what they need, then read the details back before saving.${actions.urgentWhen ? ` Mark it urgent if ${actions.urgentWhen}.` : ''}`,
+      // With the bookings skill on, the receptionist books itself; changes still come as messages.
+      `- To ${actions.bookings ? 'change or cancel an appointment' : 'book, change or cancel an appointment'}, or for anything you can't handle yourself, take a message with the take_message tool: get the caller's name, the best callback number (offer to use the number they're calling from) and what they need, then read the details back before saving.${actions.urgentWhen ? ` Mark it urgent if ${actions.urgentWhen}.` : ''}`,
       "- There is one message per call, and the staff only receive it after the call ends. If the caller changes or adds to their request after you've saved it, read back the changes and call take_message again with the complete updated message. If they want to cancel it, use cancel_message.",
     ],
   },

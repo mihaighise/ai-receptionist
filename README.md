@@ -1,12 +1,12 @@
 # Oriana Agent
 
-The code for **Oriana Agent** (the repository is still called ai-receptionist): an AI voice receptionist that answers phone calls. Callers talk to it in natural speech. It answers questions about the business, takes messages, transfers callers to a person and hangs up when the call is done.
+The code for **Oriana Agent** (the repository is still called ai-receptionist): an AI voice receptionist that answers phone calls. Callers talk to it in natural speech. It answers questions about the business, takes messages, books appointments in the owner's Google Calendar, transfers callers to a person and hangs up when the call is done.
 
 One server answers for many businesses. Each business has its own Twilio number, and its details, languages and skills are stored in Postgres.
 
 ### Skills and business types
 
-What the receptionist can do beyond answering questions comes from **skills** (`src/skills/`): today *messages* (take a message for the staff) and *transfers* (put the caller through to a person). Each skill is one file with everything about it: its name for owners, its settings and their checks, its lines in Claude's instructions, its Claude tools, and what it does on a live call. `src/skills/index.js` lists them and describes what a skill must provide. The core (`prompt.js`, `receptionist.js`, the settings checks and the owner app) asks the skills, so a new one is a new file plus one line in the list, and its settings screen in `web/src/features/skills/`. A business switches skills on in its settings (`businesses.features` holds their ids).
+What the receptionist can do beyond answering questions comes from **skills** (`src/skills/`): today *messages* (take a message for the staff), *transfers* (put the caller through to a person) and *bookings* (book an appointment in the owner's calendar). Each skill is one file with everything about it: its name for owners, its settings and their checks, its lines in Claude's instructions, its Claude tools, and what it does on a live call. `src/skills/index.js` lists them and describes what a skill must provide. The core (`prompt.js`, `receptionist.js`, the settings checks and the owner app) asks the skills, so a new one is a new file plus one line in the list, and its settings screen in `web/src/features/skills/`. A business switches skills on in its settings (`businesses.features` holds their ids).
 
 **Business types** (`src/shared/business-types.js`) give owners a template: Home services, Restaurant or café, Salon, spa or barber, Dental or medical office, Real estate, or Something else. The owner picks one in the setup's first step, which switches on that type's skills, fills the fields with examples that fit, and offers common questions to start from (tap one, then fill in the ___ parts). The type never changes what Claude is told; only what the owner writes does.
 
@@ -54,6 +54,9 @@ For businesses with the `messages` feature on, appointment requests, callbacks a
 4. **When the call ends**, the final version is saved to `data/messages.jsonl` and sent to the business's owner by SMS and/or WhatsApp (`notify_sms`, `notify_whatsapp`). A cancelled message is not sent.
 
 Messages are always written in English, translated if the caller spoke Spanish. A message is marked **URGENT** when it matches the business's urgency rule (`urgent_when`; for the dental clinic: severe pain, swelling, bleeding or a knocked-out tooth).
+
+### Booking an appointment
+With the `bookings` skill on, a connected calendar and something to book, Claude is told what can be booked (e.g. "Haircut (45 minutes)") and today's date in the business's time zone. When a caller wants an appointment, it uses `check_availability` for the day they'd like: the server reads the busy times from the owner's calendar and returns the open start times within the bookable hours, leaving the free time after each appointment, the minimum notice and how far ahead bookings go (`src/skills/bookings/slots.js`). If that day is full, it gives the next open times in the following week. After reading the details back, Claude uses `book_appointment`; the server checks the time is still free, adds the event to the calendar (with the caller's name, number and notes) and keeps it in the `bookings` table, which the call history shows. If the calendar can't be reached, the receptionist offers to take a message instead. Changing or cancelling an appointment is still a message for the staff.
 
 ### 4. Ending the call
 - **The receptionist ends it:** after saying goodbye, Claude uses `end_call`. The goodbye finishes playing before the line hangs up.
@@ -118,6 +121,15 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `index.js` | The list of skills, and what every skill provides |
 | `messages.js` | Take a message for the staff, sent to the owner by SMS and/or WhatsApp when the call ends |
 | `transfers.js` | Put the caller through to a person |
+| `bookings/index.js` | Book appointments: the `check_availability` and `book_appointment` tools |
+| `bookings/slots.js` | Booking settings, and the open times on a day (time zones, daylight saving) |
+
+**`src/integrations/`: outside services a skill uses**
+
+| File | What it does |
+|---|---|
+| `calendars/index.js` | The calendar providers, and each owner's connection (`calendar_connections`, the refresh token encrypted with `src/shared/secrets.js`) |
+| `calendars/google.js` | Google Calendar: OAuth, busy times, creating events |
 
 **Everything else**
 
@@ -187,7 +199,8 @@ Each row in the `businesses` table is one business. See `db/migrations/001_creat
 |---|---|
 | `twilio_number` | The number callers dial (E.164, e.g. `+18005550100`). Empty means no calls reach it |
 | `languages` | e.g. `{en,es}`. The first is the main language, used for the greeting |
-| `features` | `messages` (take messages) and/or `transfers` (transfer to `transfer_number`) |
+| `features` | `messages` (take messages), `transfers` (transfer to `transfer_number`) and/or `bookings` (book appointments) |
+| `booking_settings` | What callers can book, the bookable hours, time zone, free time after each appointment, notice and how far ahead. Set by the owner |
 | `notify_sms`, `notify_whatsapp` | Where messages are sent |
 | `urgent_when` | When a message is marked urgent |
 | `active` | `false` stops calls reaching it |
@@ -208,7 +221,9 @@ Visitors who aren't signed in see the public landing page at the home address (`
 
 Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.
 
-**Call history** (`/calls`): every call the receptionist answers is kept in the `calls` table with its caller, length, minutes, whether it was transferred, and the message taken, if any. Owners see them grouped by day on the Calls page (a message opens to show who to call back, with a tap-to-call link) and the latest 5 on the dashboard. The page loads 50 at a time and refreshes every minute.
+**Call history** (`/calls`): every call the receptionist answers is kept in the `calls` table with its caller, length, minutes, whether it was transferred, the message taken and the appointments booked, if any. Owners see them grouped by day on the Calls page (a message or booking opens to show who to call back, with a tap-to-call link) and the latest 5 on the dashboard. The page loads 50 at a time and refreshes every minute.
+
+**Bookings** (`src/api/owner/calendar-routes.js`): on the setup's "What it does" step, owners who switch on *Book appointments in your calendar* connect Google Calendar in a popup (so the setup's answers stay on the page), pick which of their calendars bookings go into, and list what callers can book with how long each takes (the business type suggests some), the days and hours, and the time zone. Access is only to see busy times, list calendars and add events. The refresh token is stored encrypted (AES-256-GCM, with a key derived from `BETTER_AUTH_SECRET`), and **Disconnect** gives up access at Google too. Until a calendar is connected, booking requests are taken as messages and the dashboard says so.
 
 **Menus and price lists from photos** (`src/api/menu-import.js`): on the setup's "Common questions" step, owners can add up to 5 photos of a menu or price list instead of typing it. The browser shrinks each photo to a JPEG of a few hundred KB; the API records the upload and has Claude (`claude-opus-5-5`, structured output) transcribe the sections, items, descriptions and prices exactly as printed, in the background. Each item becomes one line, like `Menu (Pizzas): Margherita, tomato, mozzarella, basil, $14.`, added to the common questions for the owner to check before saving. Photos aren't stored, and text in them is treated as content, never instructions. One upload is read at a time per owner, at most 20 a day; a photo costs about a cent or two to read. It uses the same `ANTHROPIC_API_KEY` as the phone server.
 
@@ -219,6 +234,7 @@ A new owner's business has no Twilio number until its plan is paid for; then one
 2. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**.
 3. Under **Authorized redirect URIs**, add `http://localhost:5173/api/auth/callback/google`, and `http://localhost:3001/api/auth/callback/google` for Docker.
 4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`, and restart the API.
+5. For bookings: in **APIs & Services → Library**, enable the **Google Calendar API**. Add `http://localhost:5173/api/owner/calendar/callback` (and `http://localhost:3001/api/owner/calendar/callback` for Docker) as redirect URIs too, and under **OAuth consent screen → Data access** add the scopes `calendar.events`, `calendar.freebusy` and `calendar.calendarlist.readonly`. These are sensitive scopes: test users can use them right away, but before anyone else can, Google has to verify the app, which takes a few weeks.
 
 When the app goes online, add its real address as another redirect URI and set `BETTER_AUTH_URL` to it.
 

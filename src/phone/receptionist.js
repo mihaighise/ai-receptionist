@@ -95,7 +95,7 @@ export class Receptionist {
   // What happened on the call, for its call history (e.g. transferred, and the message taken),
   // from each skill, once the call is over.
   get outcome() {
-    return Object.assign({ transferred: false, message: null }, ...this.#skills.map((skill) => skill.outcome()));
+    return Object.assign({ transferred: false, message: null, bookings: [] }, ...this.#skills.map((skill) => skill.outcome()));
   }
 
   // The caller finished a turn. Any reply still in progress is cancelled first.

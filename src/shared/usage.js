@@ -117,14 +117,18 @@ export async function addTopUp(businessId, minutes, checkoutSessionId) {
   return rowCount > 0;
 }
 
-// A business's calls, newest first, for the owner app: up to `limit`, after the cursor `after`
+// A business's calls, newest first, with the appointments booked on them, for the owner app: up to `limit`, after the cursor `after`
 // (from the previous page). Returns { calls, next }: next is the cursor for the following page, or
 // null if there are no more. The cursor is "<started_at>~<id>", so calls started at the same
 // moment are never skipped or repeated.
 export async function listCalls(businessId, { after = null, limit = 50 } = {}) {
   const [at, id] = typeof after === 'string' && after.includes('~') ? after.split('~') : [null, null];
   const { rows } = await pool.query(
-    `SELECT id, started_at, caller, seconds, minutes, transferred, message FROM calls
+    `SELECT id, started_at, caller, seconds, minutes, transferred, message,
+       (SELECT COALESCE(json_agg(json_build_object('service', b.service, 'starts_at', b.starts_at, 'ends_at', b.ends_at,
+         'caller_name', b.caller_name, 'caller_number', b.caller_number, 'notes', b.notes) ORDER BY b.starts_at), '[]')
+        FROM bookings b WHERE b.call_sid = calls.call_sid AND b.business_id = calls.business_id) AS bookings
+     FROM calls
      WHERE business_id = $1 AND ($2::timestamptz IS NULL OR (started_at, id) < ($2::timestamptz, $3::bigint))
      ORDER BY started_at DESC, id DESC LIMIT $4`,
     [businessId, at, id, limit + 1],

@@ -29,3 +29,9 @@ export function formatDay(iso: string, now = new Date()) {
     ...(day.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
   });
 }
+
+// "Thursday, November 12 at 10:00 AM", for appointments.
+export const formatAppointment = (iso: string) => {
+  const at = new Date(iso);
+  return `${at.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} at ${formatTime(iso)}`;
+};

@@ -23,5 +23,7 @@ export async function startApi(options) {
     });
     return { status: res.status, body: res.status === 204 ? null : await res.json().catch(() => null) };
   };
-  return { request, close: () => new Promise((resolve) => server.close(resolve)) };
+  // The response itself, for redirects and pages: fetch options as given.
+  const raw = (path, options) => fetch(base + path, options);
+  return { request, raw, close: () => new Promise((resolve) => server.close(resolve)) };
 }

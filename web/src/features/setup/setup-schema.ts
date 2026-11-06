@@ -2,10 +2,23 @@
 // what the API sends. The API runs the same checks again (parseSettings in src/api/business-input.js).
 
 import { z } from 'zod';
-import type { Business } from '@/api/businesses';
+import type { BookingSettings, Business, Weekday } from '@/api/businesses';
 import type { BusinessSettings } from '@/api/owner';
 import { optionalPhone, phoneField } from '@/features/businesses/business-schema';
 import { skillUi } from '@/features/skills';
+
+export const WEEKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+// The bookings skill's settings, as the form holds them: one range of hours per day, with a switch.
+const bookingSchema = z.object({
+  services: z.array(z.object({ name: z.string(), minutes: z.number() })),
+  days: z.record(z.enum(WEEKDAYS), z.object({ open: z.boolean(), from: z.string(), to: z.string() })),
+  timeZone: z.string(),
+  bufferMinutes: z.number(),
+  noticeHours: z.number(),
+  horizonDays: z.number(),
+});
+export type BookingValues = z.infer<typeof bookingSchema>;
 
 export const setupSchema = z
   .object({
@@ -22,6 +35,7 @@ export const setupSchema = z
     urgent_when: z.string(),
     notify_sms: phoneField,
     notify_whatsapp: phoneField,
+    booking_settings: bookingSchema,
     // One question and answer per line.
     faq: z.string(),
   })
@@ -47,7 +61,7 @@ export const STEPS = [
   {
     id: 'actions',
     title: 'What it does',
-    fields: ['features', 'transfer_number', 'urgent_when', 'notify_sms', 'notify_whatsapp'],
+    fields: ['features', 'transfer_number', 'urgent_when', 'notify_sms', 'notify_whatsapp', 'booking_settings'],
   },
   { id: 'faq', title: 'Common questions', fields: ['faq'] },
   { id: 'review', title: 'Review', fields: [] },
@@ -56,6 +70,50 @@ export const STEPS = [
 // The step that asks for this field (for showing an error from the API), or -1.
 export const stepOfField = (field: string) =>
   STEPS.findIndex((step) => (step.fields as readonly string[]).includes(field));
+
+// The owner's own time zone, e.g. "America/New_York".
+const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+
+// Booking settings from the API ({} until saved) -> the form's. Weekdays 9 to 5 to start with.
+export function toBookingValues(settings: Partial<BookingSettings>): BookingValues {
+  const saved = Boolean(settings.hours);
+  return {
+    services: settings.services ?? [],
+    days: Object.fromEntries(
+      WEEKDAYS.map((day) => {
+        const range = settings.hours?.[day]?.[0];
+        return [
+          day,
+          {
+            open: saved ? Boolean(range) : !['sat', 'sun'].includes(day),
+            from: range?.from ?? '09:00',
+            to: range?.to ?? '17:00',
+          },
+        ];
+      }),
+    ) as BookingValues['days'],
+    timeZone: settings.timeZone ?? browserTimeZone(),
+    bufferMinutes: settings.bufferMinutes ?? 0,
+    noticeHours: settings.noticeHours ?? 2,
+    horizonDays: settings.horizonDays ?? 30,
+  };
+}
+
+export function toBookingSettings(values: BookingValues): BookingSettings {
+  return {
+    services: values.services.map((s) => ({ name: s.name.trim(), minutes: s.minutes })).filter((s) => s.name),
+    hours: Object.fromEntries(
+      WEEKDAYS.filter((day) => values.days[day].open).map((day) => [
+        day,
+        [{ from: values.days[day].from, to: values.days[day].to }],
+      ]),
+    ),
+    timeZone: values.timeZone,
+    bufferMinutes: values.bufferMinutes,
+    noticeHours: values.noticeHours,
+    horizonDays: values.horizonDays,
+  };
+}
 
 export const emptySetup: SetupValues = {
   business_type: '',
@@ -71,6 +129,7 @@ export const emptySetup: SetupValues = {
   urgent_when: '',
   notify_sms: '',
   notify_whatsapp: '',
+  booking_settings: toBookingValues({}),
   faq: '',
 };
 
@@ -90,6 +149,7 @@ export function toSetupValues(business: Business): SetupValues {
     urgent_when: business.urgent_when,
     notify_sms: business.notify_sms ?? '',
     notify_whatsapp: business.notify_whatsapp ?? '',
+    booking_settings: toBookingValues(business.booking_settings ?? {}),
     faq: business.faq.join('\n'),
   };
 }
@@ -109,6 +169,7 @@ export function toSettings(values: SetupValues): BusinessSettings {
     urgent_when: values.urgent_when.trim(),
     notify_sms: optionalPhone(values.notify_sms),
     notify_whatsapp: optionalPhone(values.notify_whatsapp),
+    booking_settings: toBookingSettings(values.booking_settings),
     faq: values.faq
       .split('\n')
       .map((line) => line.trim())

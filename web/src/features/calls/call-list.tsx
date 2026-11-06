@@ -1,15 +1,48 @@
-import { ChevronDown, MessageSquareText, Phone, PhoneForwarded } from 'lucide-react';
-import { useState } from 'react';
-import type { Call } from '@/api/owner';
+import { CalendarCheck, ChevronDown, MessageSquareText, Phone, PhoneForwarded } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
+import type { Booking, Call } from '@/api/owner';
 import { Badge } from '@/components/ui/badge';
-import { formatDay, formatDuration, formatPhone, formatTime } from '@/lib/format';
+import { formatAppointment, formatDay, formatDuration, formatPhone, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-// One call: who called, when, for how long, and what came of it. A call with a message opens to
-// show it.
+// A label and value in a call's details.
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="pt-2.5 text-muted-foreground first:pt-0 sm:pt-0">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </>
+  );
+}
+
+const PhoneLink = ({ number }: { number: string }) => (
+  <a href={`tel:${number}`} className="font-medium text-primary underline-offset-4 hover:underline">
+    {formatPhone(number)}
+  </a>
+);
+
+function BookingDetails({ booking }: { booking: Booking }) {
+  return (
+    <>
+      <Detail label="Booked">
+        <span className="font-medium">{booking.service}</span>, {formatAppointment(booking.starts_at)}
+      </Detail>
+      <Detail label="Name">{booking.caller_name}</Detail>
+      <Detail label="Phone">
+        <PhoneLink number={booking.caller_number} />
+      </Detail>
+      {booking.notes && <Detail label="Notes">{booking.notes}</Detail>}
+    </>
+  );
+}
+
+// One call: who called, when, for how long, and what came of it. A call with a message or a
+// booking opens to show it.
 function CallRow({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
-  const Icon = call.message ? MessageSquareText : call.transferred ? PhoneForwarded : Phone;
+  const bookings = call.bookings ?? [];
+  const booked = bookings[0];
+  const Icon = booked ? CalendarCheck : call.message ? MessageSquareText : call.transferred ? PhoneForwarded : Phone;
   const summary = (
     <>
       <span
@@ -23,21 +56,25 @@ function CallRow({ call }: { call: Call }) {
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium tabular-nums">
-            {call.message?.caller_name ?? (call.caller ? formatPhone(call.caller) : 'Unknown caller')}
+            {booked?.caller_name ??
+              call.message?.caller_name ??
+              (call.caller ? formatPhone(call.caller) : 'Unknown caller')}
           </span>
+          {booked && <Badge>Booked</Badge>}
           {call.message?.urgent && <Badge variant="destructive">Urgent</Badge>}
           {call.message && !call.message.urgent && <Badge variant="secondary">Message</Badge>}
           {call.transferred && <Badge variant="outline">Transferred</Badge>}
         </span>
         <span className="block truncate text-muted-foreground text-sm">
           {formatTime(call.started_at)} · {formatDuration(call.seconds)}
+          {booked && ` · ${booked.service}, ${formatAppointment(booked.starts_at)}`}
           {call.message && ` · ${call.message.message}`}
         </span>
       </span>
     </>
   );
 
-  if (!call.message) return <div className="flex items-center gap-3 px-4 py-3 sm:px-5">{summary}</div>;
+  if (!call.message && !booked) return <div className="flex items-center gap-3 px-4 py-3 sm:px-5">{summary}</div>;
   return (
     <div>
       <button
@@ -53,25 +90,21 @@ function CallRow({ call }: { call: Call }) {
       </button>
       {open && (
         <dl className="mx-4 mb-4 grid gap-x-6 gap-y-0.5 rounded-lg bg-muted/50 p-4 text-sm sm:mx-5 sm:grid-cols-[auto_1fr] sm:gap-y-3">
-          <dt className="pt-2.5 text-muted-foreground first:pt-0 sm:pt-0">Name</dt>
-          <dd>{call.message.caller_name}</dd>
-          <dt className="pt-2.5 text-muted-foreground first:pt-0 sm:pt-0">Call back on</dt>
-          <dd>
-            <a
-              href={`tel:${call.message.callback_number}`}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {formatPhone(call.message.callback_number)}
-            </a>
-          </dd>
-          <dt className="pt-2.5 text-muted-foreground first:pt-0 sm:pt-0">Message</dt>
-          <dd className="whitespace-pre-wrap">{call.message.message}</dd>
-          {call.caller && (
+          {bookings.map((booking) => (
+            <BookingDetails key={booking.starts_at} booking={booking} />
+          ))}
+          {call.message && (
             <>
-              <dt className="pt-2.5 text-muted-foreground first:pt-0 sm:pt-0">Called from</dt>
-              <dd className="tabular-nums">{formatPhone(call.caller)}</dd>
+              {!booked && <Detail label="Name">{call.message.caller_name}</Detail>}
+              <Detail label="Call back on">
+                <PhoneLink number={call.message.callback_number} />
+              </Detail>
+              <Detail label="Message">
+                <span className="whitespace-pre-wrap">{call.message.message}</span>
+              </Detail>
             </>
           )}
+          {call.caller && <Detail label="Called from">{formatPhone(call.caller)}</Detail>}
         </dl>
       )}
     </div>
