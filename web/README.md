@@ -2,7 +2,7 @@
 
 The web app for the AI receptionist, with two parts:
 
-- **Owner app** (`/`): business owners sign in with Google and see their receptionist. It uses `/api/owner` and `/api/auth`.
+- **Owner app** (`/`): business owners sign in with Google, set up their receptionist (`/setup`) and see it on the dashboard. It uses `/api/owner` and `/api/auth`.
 - **Admin site** (`/admin`): add businesses and edit how their calls are answered. It uses `/api/admin`, which only answers on this computer.
 
 It's a React app that talks to the API in the repo root (`src/api`).
@@ -39,6 +39,7 @@ TypeScript, Vite, React, TanStack Router (pages), TanStack Query (loading and sa
 | `src/main.tsx`             | Starts the app: data loading, pages and toasts                                           |
 | `src/router.tsx`           | The pages and their addresses, and which ones need a signed-in owner                     |
 | `src/features/owner/`      | The owner app: sign-in page, its layout and the dashboard                                |
+| `src/features/setup/`      | The owner's setup wizard: its steps, checks and review                                   |
 | `src/routes/`              | The admin site's layout and pages                                                        |
 | `src/features/businesses/` | Admin: the business list, the form and its validation, the preview and the delete dialog |
 | `src/api/`                 | The API client, and the hooks that load and save businesses and the owner's data         |

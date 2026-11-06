@@ -21,7 +21,8 @@ export const slugify = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
-const phone = z
+// An optional phone number in international format.
+export const phoneField = z
   .string()
   .refine((value) => !value.trim() || E164.test(normalizePhone(value)), 'Use international format, e.g. +18005550100.');
 
@@ -35,14 +36,14 @@ export const businessFormSchema = z
     hours: z.string(),
     // One fact per line.
     faq: z.string(),
-    twilio_number: phone,
+    twilio_number: phoneField,
     mainLanguage: z.string().min(1, 'Pick the main language.'),
     otherLanguages: z.array(z.string()),
     features: z.array(z.string()),
-    transfer_number: phone,
+    transfer_number: phoneField,
     urgent_when: z.string(),
-    notify_sms: phone,
-    notify_whatsapp: phone,
+    notify_sms: phoneField,
+    notify_whatsapp: phoneField,
     owner_email: z.string().refine((value) => !value.trim() || EMAIL.test(value.trim()), 'Enter an email address.'),
     active: z.boolean(),
   })
@@ -96,7 +97,8 @@ export function toFormValues(business: Business): BusinessFormValues {
   };
 }
 
-const optionalPhone = (value: string) => normalizePhone(value) || null;
+// "" -> null; anything else -> "+18005550100" form.
+export const optionalPhone = (value: string) => normalizePhone(value) || null;
 
 export function toInput(values: BusinessFormValues): BusinessInput {
   return {

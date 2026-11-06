@@ -1,6 +1,7 @@
 // The pages and their addresses. One app holds both sites:
 //   /                                the owner app (signed-in owners only)
 //   /sign-in                         owner sign-in
+//   /setup                           set up (or change) the owner's receptionist
 //   /admin                           the admin site: the business list
 //   /admin/businesses/new            add a business
 //   /admin/businesses/:businessId    edit a business
@@ -10,6 +11,7 @@ import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@t
 import { DashboardPage } from './features/owner/dashboard-page';
 import { OwnerLayout } from './features/owner/owner-layout';
 import { SignInPage } from './features/owner/sign-in-page';
+import { SetupPage } from './features/setup/setup-page';
 import { authClient } from './lib/auth-client';
 import { AdminLayout } from './routes/admin-layout';
 import { EditBusinessPage, HomePage, NewBusinessPage } from './routes/admin-pages';
@@ -44,7 +46,10 @@ const signInRoute = createRoute({
 const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminLayout });
 
 const routeTree = rootRoute.addChildren([
-  ownerRoute.addChildren([createRoute({ getParentRoute: () => ownerRoute, path: '/', component: DashboardPage })]),
+  ownerRoute.addChildren([
+    createRoute({ getParentRoute: () => ownerRoute, path: '/', component: DashboardPage }),
+    createRoute({ getParentRoute: () => ownerRoute, path: '/setup', component: SetupPage }),
+  ]),
   signInRoute,
   adminRoute.addChildren([
     createRoute({ getParentRoute: () => adminRoute, path: '/', component: HomePage }),

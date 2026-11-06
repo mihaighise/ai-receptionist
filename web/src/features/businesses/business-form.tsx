@@ -6,6 +6,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { type Business, useOptions, usePreview, useSaveBusiness } from '@/api/businesses';
 import { ApiError } from '@/api/client';
+import { CheckboxGroup } from '@/components/checkbox-group';
 import { FormField } from '@/components/form-field';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -36,33 +37,6 @@ function Section({ title, description, children }: { title: string; description?
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">{children}</CardContent>
     </Card>
-  );
-}
-
-// A checkbox list over an array field: ticking adds the value, unticking removes it.
-function CheckboxGroup({
-  items,
-  value,
-  onChange,
-}: {
-  items: { value: string; label: string }[];
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
-      {items.map((item) => (
-        <Label key={item.value} className="cursor-pointer font-normal">
-          <Checkbox
-            checked={value.includes(item.value)}
-            onCheckedChange={(checked) =>
-              onChange(checked ? [...value, item.value] : value.filter((v) => v !== item.value))
-            }
-          />
-          {item.label}
-        </Label>
-      ))}
-    </div>
   );
 }
 
