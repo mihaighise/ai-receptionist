@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
 
 /* Dark mode follows the "dark" class on <html>, set from the theme choice (src/lib/theme.ts). */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -8,6 +9,77 @@
 /* shadcn/ui theme: components use these colors (bg-primary, text-muted-foreground, ...). */
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Headings on the landing page. */
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Landing page motion (src/features/landing). Each stops for visitors who prefer reduced motion. */
+  --animate-aurora: aurora 18s ease-in-out infinite alternate;
+  --animate-orb: orb 6s ease-in-out infinite;
+  --animate-ring: ring 3.6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+  --animate-wave: wave 1.2s ease-in-out infinite;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-rise: rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes aurora {
+    0% {
+      transform: translate3d(-10%, -6%, 0) rotate(0deg) scale(1);
+    }
+    50% {
+      transform: translate3d(6%, 4%, 0) rotate(20deg) scale(1.15);
+    }
+    100% {
+      transform: translate3d(-4%, 8%, 0) rotate(-10deg) scale(1.05);
+    }
+  }
+  @keyframes orb {
+    0%,
+    100% {
+      transform: scale(1);
+      filter: hue-rotate(0deg);
+    }
+    50% {
+      transform: scale(1.06);
+      filter: hue-rotate(25deg);
+    }
+  }
+  @keyframes ring {
+    0% {
+      transform: scale(0.85);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.9);
+      opacity: 0;
+    }
+  }
+  @keyframes wave {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -93,6 +165,14 @@
   --warning-soft: oklch(0.31 0.06 75);
   --sidebar: oklch(0.165 0.007 265);
   --sidebar-accent: oklch(0.23 0.01 265);
+}
+
+/* Visitors who asked their device for less motion get a still page. Outside the layers, so it wins
+   over the animate-* utilities without !important. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-safe-only {
+    animation: none;
+  }
 }
 
 @layer base {

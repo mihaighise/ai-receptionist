@@ -1,5 +1,6 @@
 // The pages and their addresses. One app holds both sites:
-//   /                                the owner app (signed-in owners only)
+//   /                                the owner app (signed-in owners only; others see the landing page)
+//   /welcome                         the public landing page
 //   /sign-in                         owner sign-in
 //   /setup                           set up (or change) the owner's receptionist
 //   /calls                           the calls the receptionist answered, and its messages
@@ -12,6 +13,7 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
 import { PlanPage } from './features/billing/plan-page';
 import { CallsPage } from './features/calls/calls-page';
+import { LandingPage } from './features/landing/landing-page';
 import { DashboardPage } from './features/owner/dashboard-page';
 import { OwnerLayout } from './features/owner/owner-layout';
 import { SignInPage } from './features/owner/sign-in-page';
@@ -34,10 +36,13 @@ const ownerRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'owner',
   component: OwnerLayout,
-  beforeLoad: async () => {
-    if (!(await isSignedIn())) throw redirect({ to: '/sign-in' });
+  // Visitors who aren't signed in see the landing page at the home address, and sign in for the rest.
+  beforeLoad: async ({ location }) => {
+    if (!(await isSignedIn())) throw redirect({ to: location.pathname === '/' ? '/welcome' : '/sign-in' });
   },
 });
+
+const landingRoute = createRoute({ getParentRoute: () => rootRoute, path: '/welcome', component: LandingPage });
 
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -74,6 +79,7 @@ const routeTree = rootRoute.addChildren([
     }),
   ]),
   signInRoute,
+  landingRoute,
   adminRoute.addChildren([
     createRoute({ getParentRoute: () => adminRoute, path: '/', component: HomePage }),
     createRoute({ getParentRoute: () => adminRoute, path: '/businesses/new', component: NewBusinessPage }),

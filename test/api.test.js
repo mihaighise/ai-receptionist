@@ -113,3 +113,14 @@ test('the admin site points at a Twilio number or slug already in use', async ()
   const again = await api.request('POST', '/admin/businesses', { body: { ...settings, slug: 'sunrise-dental' } });
   assert.deepEqual(again.body.fields, { slug: 'Another business already uses this slug.' });
 });
+
+test('the plans and the price of extra minutes are public, for the landing page', async () => {
+  const { status, body } = await api.request('GET', '/plans');
+  assert.equal(status, 200);
+  assert.deepEqual(body.plans.map((plan) => [plan.name, plan.priceCents, plan.minutes]), [
+    ['Starter', 7900, 200],
+    ['Pro', 17900, 600],
+    ['Business', 34900, 1500],
+  ]);
+  assert.equal(body.topUp.centsPerMinute, 45);
+});
