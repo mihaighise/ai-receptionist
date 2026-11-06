@@ -7,9 +7,11 @@
 //   GET  /api/owner/options            languages and features to choose from
 //   PUT  /api/owner/business           save their business's settings, creating it the first time
 //   POST /api/owner/preview            the greeting callers would hear with unsaved settings
-//   GET  /api/owner/plans              { plans, testMode }: the plans to choose from
+//   GET  /api/owner/plans              { plans, topUp, testMode }: the plans, and extra minutes
 //   POST /api/owner/billing/checkout   { plan } -> { url } of a Stripe Checkout page to pay for it
-//   POST /api/owner/billing/confirm    { sessionId } after Checkout -> the updated billing
+//   POST /api/owner/billing/top-up     { minutes } -> { url } of a Stripe Checkout page to buy them
+//   POST /api/owner/billing/confirm    { sessionId } after Checkout -> the updated billing, and
+//                                      kind ('plan' or 'top_up'), and added: extra minutes it added
 //   POST /api/owner/billing/portal     -> { url } of Stripe's billing page
 //
 // Owners only change what the receptionist knows and does. Its phone number, whether it answers
@@ -19,7 +21,15 @@ import express from 'express';
 import { findBusinessRowByOwner, saveOwnerBusiness } from '../../shared/businesses.js';
 import { getSession, signInProviders } from '../auth.js';
 import {
-  BillingError, billingSummary, confirmCheckout, isTestMode, openBillingPortal, planList, startCheckout,
+  BillingError,
+  billingSummary,
+  confirmCheckout,
+  isTestMode,
+  openBillingPortal,
+  planList,
+  startCheckout,
+  startTopUp,
+  topUpOptions,
 } from '../billing.js';
 import { InputError, options, parseSettings, preview } from '../business-input.js';
 
@@ -46,7 +56,7 @@ export function ownerRoutes({ stripe }) {
   router.get('/me', async (req, res) => {
     const { id, name, email, image } = req.user;
     const business = await findBusinessRowByOwner(id);
-    res.json({ user: { id, name, email, image }, business, billing: billingSummary(business) });
+    res.json({ user: { id, name, email, image }, business, billing: await billingSummary(business) });
   });
 
   router.get('/options', (_req, res) => {
@@ -63,7 +73,7 @@ export function ownerRoutes({ stripe }) {
   });
 
   router.get('/plans', (_req, res) => {
-    res.json({ plans: planList(), testMode: Boolean(stripe) && isTestMode() });
+    res.json({ plans: planList(), topUp: topUpOptions(), testMode: Boolean(stripe) && isTestMode() });
   });
 
   // The billing routes need Stripe and the owner's business; req.business is it.
@@ -80,9 +90,17 @@ export function ownerRoutes({ stripe }) {
     res.json({ url: await startCheckout(stripe, { business, user, plan: req.body?.plan, appUrl: APP_URL }) });
   });
 
+  billing.post('/top-up', async (req, res) => {
+    const { business, user } = req;
+    res.json({ url: await startTopUp(stripe, { business, user, minutes: req.body?.minutes, appUrl: APP_URL }) });
+  });
+
   billing.post('/confirm', async (req, res) => {
-    const business = await confirmCheckout(stripe, { business: req.business, sessionId: req.body?.sessionId });
-    res.json(billingSummary(business));
+    const { business, kind, added } = await confirmCheckout(stripe, {
+      business: req.business,
+      sessionId: req.body?.sessionId,
+    });
+    res.json({ ...(await billingSummary(business)), kind, added });
   });
 
   billing.post('/portal', async (req, res) => {

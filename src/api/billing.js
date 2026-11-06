@@ -1,5 +1,6 @@
-// Subscriptions with Stripe. Owners pay on Stripe's own Checkout page and manage their plan, card
-// and invoices on Stripe's billing page (the Customer Portal), so card details never reach us.
+// Subscriptions and extra minutes with Stripe. Owners pay on Stripe's own Checkout page (a
+// subscription for a plan, a one-time payment for extra minutes) and manage their plan, card and
+// invoices on Stripe's billing page (the Customer Portal), so card details never reach us.
 //
 // Stripe is the source of truth: each business keeps a copy of its subscription (plan, status,
 // period end), refreshed from Stripe whenever a webhook says it changed (stripe-webhook.js) and when
@@ -11,7 +12,8 @@ import Stripe from 'stripe';
 import {
   findBusinessRowByStripeCustomer, saveSubscription, setStripeCustomer,
 } from '../shared/businesses.js';
-import { PAID_STATUSES, PLANS, isPaid, planForLookupKey } from '../shared/plans.js';
+import { PAID_STATUSES, PLANS, TOP_UP, isPaid, planForLookupKey } from '../shared/plans.js';
+import { addTopUp, usageFor } from '../shared/usage.js';
 
 // Pinned, so an SDK upgrade can't change what the API sends without us noticing.
 const API_VERSION = '2026-10-28.endive';
@@ -32,15 +34,15 @@ export class BillingError extends Error {
   }
 }
 
-// plan code -> Stripe Price ID, looked up by lookup key once per process.
+// Price lookup key -> Stripe Price ID, looked up once per process.
 const priceIds = new Map();
-async function priceIdFor(stripe, plan) {
-  if (!priceIds.has(plan)) {
-    const { data } = await stripe.prices.list({ lookup_keys: [PLANS[plan].lookupKey], active: true, limit: 1 });
-    if (!data[0]) throw new BillingError('This plan is not available yet. Please try again later.', 503);
-    priceIds.set(plan, data[0].id);
+async function priceIdFor(stripe, lookupKey) {
+  if (!priceIds.has(lookupKey)) {
+    const { data } = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+    if (!data[0]) throw new BillingError('This is not available yet. Please try again later.', 503);
+    priceIds.set(lookupKey, data[0].id);
   }
-  return priceIds.get(plan);
+  return priceIds.get(lookupKey);
 }
 
 // The business's Stripe Customer, created the first time. Two requests at once get the same one:
@@ -71,7 +73,7 @@ export async function startCheckout(stripe, { business, user, plan, appUrl }) {
     mode: 'subscription',
     customer,
     client_reference_id: business.id,
-    line_items: [{ price: await priceIdFor(stripe, plan), quantity: 1 }],
+    line_items: [{ price: await priceIdFor(stripe, PLANS[plan].lookupKey), quantity: 1 }],
     success_url: `${appUrl}/?checkout={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/plan`,
     integration_identifier: INTEGRATION_IDENTIFIER,
@@ -86,6 +88,7 @@ function toSubscription(subscription) {
     id: subscription.id,
     plan: planForLookupKey(item?.price?.lookup_key),
     status: subscription.status,
+    periodStart: item ? new Date(item.current_period_start * 1000) : null,
     periodEnd: item ? new Date(item.current_period_end * 1000) : null,
     cancels: Boolean(subscription.cancel_at_period_end || subscription.cancel_at),
   };
@@ -114,18 +117,66 @@ export async function syncSubscription(stripe, subscriptionId) {
   return saveSubscription(customerId, toSubscription(subscription));
 }
 
-// After Checkout: makes sure the business shows the new plan straight away, even if the webhook
-// hasn't arrived yet. Only accepts a Checkout Session for this business's own customer.
+// Buying extra minutes: returns the address of a Stripe Checkout page for a one-time payment of
+// minutes x the price per minute. Only for businesses with a paid plan.
+export async function startTopUp(stripe, { business, user, minutes, appUrl }) {
+  const { min, max, step } = TOP_UP;
+  if (!Number.isInteger(minutes) || minutes < min || minutes > max || minutes % step !== 0) {
+    throw new BillingError(`Choose between ${min} and ${max} minutes, in steps of ${step}.`);
+  }
+  if (!isPaid(business.subscription_status)) throw new BillingError('Choose a plan first.');
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    customer: await customerFor(stripe, business, user),
+    client_reference_id: business.id,
+    line_items: [{ price: await priceIdFor(stripe, TOP_UP.lookupKey), quantity: minutes }],
+    success_url: `${appUrl}/plan?checkout={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/plan`,
+    integration_identifier: INTEGRATION_IDENTIFIER,
+  });
+  return session.url;
+}
+
+// A paid extra-minutes Checkout Session -> the minutes are added to its business, once (the
+// webhook and the owner coming back can both get here; whichever is first adds them). Payments
+// that are still pending (some payment methods take days) are added when the webhook says they
+// went through. Returns { business, added } (added: the minutes this payment has added, 0 while
+// it's pending), or null if the session isn't one of ours.
+export async function fulfillTopUp(stripe, sessionId) {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['line_items.data.price'] });
+  if (session.mode !== 'payment') return null;
+  const customer = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+  const business = customer && (await findBusinessRowByStripeCustomer(customer));
+  if (!business) return null;
+  const item = session.line_items?.data.find((line) => line.price?.lookup_key === TOP_UP.lookupKey);
+  if (session.payment_status !== 'paid' || !item) return { business, added: 0 };
+  await addTopUp(business.id, item.quantity, session.id);
+  return { business, added: item.quantity };
+}
+
+// After Checkout: makes sure the owner sees the new plan or the extra minutes straight away, even
+// if the webhook hasn't arrived yet. Only accepts a Checkout Session for this business's own
+// customer. Returns { business, kind, added }: kind is 'plan' or 'top_up', added the extra
+// minutes that payment added.
 export async function confirmCheckout(stripe, { business, sessionId }) {
   if (typeof sessionId !== 'string' || !sessionId.startsWith('cs_')) throw new BillingError('Unknown checkout.');
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  let session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId);
+  } catch (err) {
+    if (err.code === 'resource_missing') throw new BillingError('Unknown checkout.', 404);
+    throw err;
+  }
   const customer = typeof session.customer === 'string' ? session.customer : session.customer?.id;
   if (!business.stripe_customer_id || customer !== business.stripe_customer_id) {
     throw new BillingError('Unknown checkout.', 404);
   }
-  if (!session.subscription) return business;
+  if (session.mode === 'payment') {
+    return { business, added: 0, ...(await fulfillTopUp(stripe, session.id)), kind: 'top_up' };
+  }
+  if (!session.subscription) return { business, kind: 'plan', added: 0 };
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
-  return (await syncSubscription(stripe, subscriptionId)) ?? business;
+  return { business: (await syncSubscription(stripe, subscriptionId)) ?? business, kind: 'plan', added: 0 };
 }
 
 // The Customer Portal configuration npm run stripe:setup created, looked up once per process.
@@ -150,10 +201,11 @@ export async function openBillingPortal(stripe, { business, appUrl }) {
   return session.url;
 }
 
-// What the owner app shows about the business's plan.
-export function billingSummary(business) {
+// What the owner app shows about the business's plan and its minutes this month (see usage.js).
+export async function billingSummary(business) {
   if (!business) return null;
   return {
+    usage: await usageFor(business),
     // The business won't answer calls until it has a paid plan.
     needsPlan: business.requires_subscription && !isPaid(business.subscription_status),
     plan: business.plan,
@@ -162,6 +214,12 @@ export function billingSummary(business) {
     cancels: business.subscription_cancels,
   };
 }
+
+// Extra minutes, for the slider on the plan page.
+export const topUpOptions = () => {
+  const { centsPerMinute, min, max, step } = TOP_UP;
+  return { centsPerMinute, min, max, step };
+};
 
 // The plans, for the plan page.
 export const planList = () =>

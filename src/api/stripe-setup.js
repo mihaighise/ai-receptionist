@@ -3,12 +3,13 @@
 //   - One Product per plan in src/shared/plans.js (id bivoz_<plan>), with a monthly USD Price found by
 //     the plan's lookup key. A changed price gets a new Price that takes over the lookup key; existing
 //     subscribers keep paying the old one until they change plan.
+//   - Extra minutes (TOP_UP): a Product with a one-time per-minute Price, bought by the minute.
 //   - The Customer Portal (Stripe's billing page): owners can switch between the plans (upgrades
 //     are charged straight away, downgrades start when the paid month ends), update their card, see
 //     invoices and cancel at the end of the month.
 // Only runs with a test key (sk_test_ / rk_test_) for now.
 
-import { PLANS } from '../shared/plans.js';
+import { PLANS, TOP_UP } from '../shared/plans.js';
 import { createStripe, PORTAL_METADATA } from './billing.js';
 
 const key = process.env.STRIPE_SECRET_KEY ?? '';
@@ -18,9 +19,10 @@ if (!/^(sk|rk)_test_/.test(key)) {
 }
 const stripe = createStripe(key);
 
-async function setUpPlan(code, plan) {
-  const productId = `bivoz_${code}`;
-  const details = { name: `Bivoz ${plan.name}`, description: `${plan.minutes} call minutes a month`, metadata: { plan: code } };
+// Creates or updates a Product, and makes sure the Price with this lookup key has this amount (a
+// new Price takes over the lookup key if it changed). recurring: { interval } for subscriptions.
+// Returns { product, prices }, for the billing page settings.
+async function setUpProduct(productId, details, { lookupKey, unitAmount, recurring, label }) {
   let product;
   try {
     product = await stripe.products.update(productId, details);
@@ -29,23 +31,35 @@ async function setUpPlan(code, plan) {
     product = await stripe.products.create({ id: productId, ...details });
   }
 
-  const { data } = await stripe.prices.list({ lookup_keys: [plan.lookupKey], active: true, limit: 1 });
+  const { data } = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
   const current = data[0];
-  if (current?.unit_amount === plan.priceCents && current.product === product.id) {
-    console.log(`${plan.name}: $${plan.priceCents / 100}/month (${current.id})`);
+  if (current?.unit_amount === unitAmount && current.product === product.id) {
+    console.log(`${label} (${current.id})`);
     return { product: product.id, prices: [current.id] };
   }
   const price = await stripe.prices.create({
     product: product.id,
     currency: 'usd',
-    unit_amount: plan.priceCents,
-    recurring: { interval: 'month' },
-    lookup_key: plan.lookupKey,
+    unit_amount: unitAmount,
+    ...(recurring && { recurring }),
+    lookup_key: lookupKey,
     transfer_lookup_key: true,
   });
-  console.log(`${plan.name}: $${plan.priceCents / 100}/month (created ${price.id})`);
+  console.log(`${label} (created ${price.id})`);
   return { product: product.id, prices: [price.id] };
 }
+
+const setUpPlan = (code, plan) =>
+  setUpProduct(
+    `bivoz_${code}`,
+    { name: `Bivoz ${plan.name}`, description: `${plan.minutes} call minutes a month`, metadata: { plan: code } },
+    {
+      lookupKey: plan.lookupKey,
+      unitAmount: plan.priceCents,
+      recurring: { interval: 'month' },
+      label: `${plan.name}: $${plan.priceCents / 100}/month`,
+    },
+  );
 
 async function setUpPortal(products) {
   const settings = {
@@ -77,5 +91,11 @@ async function setUpPortal(products) {
 
 const products = [];
 for (const [code, plan] of Object.entries(PLANS)) products.push(await setUpPlan(code, plan));
+await setUpProduct(
+  'bivoz_extra_minutes',
+  { name: 'Bivoz extra minutes', description: "Call minutes for when the plan's run out. They don't expire." },
+  { lookupKey: TOP_UP.lookupKey, unitAmount: TOP_UP.centsPerMinute, label: `Extra minutes: $${TOP_UP.centsPerMinute / 100}/minute` },
+);
+// Only the plans can be switched between on the billing page.
 await setUpPortal(products);
 console.log('Stripe is set up.');

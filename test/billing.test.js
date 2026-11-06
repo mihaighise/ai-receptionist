@@ -221,3 +221,109 @@ test('without Stripe keys, billing says it is not set up', async () => {
     await off.close();
   }
 });
+
+// --- Extra minutes ---
+
+// A paid extra-minutes Checkout Session for cus_1, as Stripe returns it with its line items.
+function topUpSession(id, minutes, paymentStatus = 'paid') {
+  return {
+    id,
+    object: 'checkout.session',
+    mode: 'payment',
+    customer: 'cus_1',
+    payment_status: paymentStatus,
+    line_items: { data: [{ quantity: minutes, price: { lookup_key: 'bivoz_extra_minute' } }] },
+  };
+}
+
+async function paidOwner() {
+  const owner = await ownerWithBusiness();
+  await checkout(owner.cookie);
+  await sendWebhook('customer.subscription.created', subscription({ customer: 'cus_1', plan: 'starter' }));
+  return owner;
+}
+
+const topUp = (cookie, minutes) => api.request('POST', '/owner/billing/top-up', { cookie, body: { minutes } });
+const extraMinutes = async (cookie) => (await api.request('GET', '/owner/me', { cookie })).body.billing.usage.extra;
+
+test('extra minutes need a paid plan, and a number of minutes the slider offers', async () => {
+  const { cookie } = await ownerWithBusiness();
+  assert.deepEqual((await topUp(cookie, 200)).body, { error: 'Choose a plan first.' });
+  await checkout(cookie);
+  await sendWebhook('customer.subscription.created', subscription({ customer: 'cus_1', plan: 'starter' }));
+  for (const minutes of [0, 49, 75, 2050, '200']) assert.equal((await topUp(cookie, minutes)).status, 400, String(minutes));
+  assert.equal((await topUp(cookie, 2000)).status, 200);
+});
+
+test('buying extra minutes opens a one-time Stripe Checkout for that many minutes', async () => {
+  const { cookie } = await paidOwner();
+  fake.calls.length = 0;
+  assert.deepEqual(await topUp(cookie, 300), { status: 200, body: { url: 'https://checkout.stripe.test/cs_test_1' } });
+  const [, session] = fake.calls.find(([name]) => name === 'checkout.sessions.create');
+  assert.equal(session.mode, 'payment');
+  assert.equal(session.customer, 'cus_1');
+  assert.deepEqual(session.line_items, [{ price: 'price_minute', quantity: 300 }]);
+  assert.equal(session.success_url, 'http://localhost:5199/plan?checkout={CHECKOUT_SESSION_ID}');
+  assert.equal('payment_method_types' in session, false);
+});
+
+test('a paid extra-minutes checkout adds the minutes once, however often Stripe says so', async () => {
+  const { cookie } = await paidOwner();
+  fake.state.sessions.set('cs_topup', topUpSession('cs_topup', 300));
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await sendWebhook('checkout.session.completed', topUpSession('cs_topup', 300))).status, 200);
+  }
+  assert.equal(await extraMinutes(cookie), 300);
+});
+
+test('a payment that clears later adds its minutes once it has gone through', async () => {
+  const { cookie } = await paidOwner();
+  fake.state.sessions.set('cs_slow', topUpSession('cs_slow', 200, 'unpaid'));
+  await sendWebhook('checkout.session.completed', topUpSession('cs_slow', 200, 'unpaid'));
+  assert.equal(await extraMinutes(cookie), 0);
+  fake.state.sessions.set('cs_slow', topUpSession('cs_slow', 200));
+  await sendWebhook('checkout.session.async_payment_succeeded', topUpSession('cs_slow', 200));
+  assert.equal(await extraMinutes(cookie), 200);
+});
+
+test('coming back from buying minutes adds them straight away and says how many', async () => {
+  const { cookie } = await paidOwner();
+  fake.state.sessions.set('cs_back', topUpSession('cs_back', 500));
+  const first = await api.request('POST', '/owner/billing/confirm', { cookie, body: { sessionId: 'cs_back' } });
+  assert.equal(first.body.kind, 'top_up');
+  assert.equal(first.body.added, 500);
+  assert.equal(first.body.usage.extra, 500);
+  // The webhook arriving afterwards (or a reload) doesn't add them again.
+  await sendWebhook('checkout.session.completed', topUpSession('cs_back', 500));
+  await api.request('POST', '/owner/billing/confirm', { cookie, body: { sessionId: 'cs_back' } });
+  assert.equal(await extraMinutes(cookie), 500);
+});
+
+test('coming back after the webhook already added the minutes still says how many they were', async () => {
+  const { cookie } = await paidOwner();
+  fake.state.sessions.set('cs_late', topUpSession('cs_late', 300));
+  await sendWebhook('checkout.session.completed', topUpSession('cs_late', 300));
+  const back = await api.request('POST', '/owner/billing/confirm', { cookie, body: { sessionId: 'cs_late' } });
+  assert.equal(back.body.added, 300);
+  assert.equal(back.body.usage.extra, 300);
+});
+
+test('an unknown checkout is refused, not an error', async () => {
+  const { cookie } = await paidOwner();
+  const unknown = await api.request('POST', '/owner/billing/confirm', { cookie, body: { sessionId: 'cs_missing' } });
+  assert.deepEqual(unknown, { status: 404, body: { error: 'Unknown checkout.' } });
+});
+
+test('the dashboard gets this month’s minutes from the billing month Stripe reports', async () => {
+  const { cookie } = await paidOwner();
+  const { usage } = (await api.request('GET', '/owner/me', { cookie })).body.billing;
+  assert.deepEqual(usage, {
+    limited: true,
+    planMinutes: 200,
+    used: 0,
+    extra: 0,
+    remaining: 200,
+    periodStart: new Date(1793400000 * 1000).toISOString(),
+    periodEnd: new Date(1796000000 * 1000).toISOString(),
+  });
+});

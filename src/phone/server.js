@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws';
 import { handleMediaStream } from './mediaStream.js';
 import { findBusinessByNumber } from '../shared/businesses.js';
 import { migrate } from '../shared/db/migrate.js';
+import { answerFor } from '../shared/usage.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 // Public base URL Twilio reaches us on, e.g. https://abc123.ngrok-free.app
@@ -78,6 +79,19 @@ app.post('/incoming-call', validateTwilio, async (req, res) => {
     console.warn(`No active business for ${To}; rejecting call ${CallSid}`);
     twiml.say('Sorry, this number is not in service.');
     twiml.hangup();
+    return res.type('text/xml').send(twiml.toString());
+  }
+
+  // A business whose plan has run out of minutes (and has no extra minutes left) doesn't get the
+  // receptionist; usage.js decides.
+  const answer = await answerFor(business);
+  if (answer !== 'answer') {
+    console.warn(`${business.name} is out of minutes; ${answer === 'transfer' ? 'transferring' : 'declining'} call ${CallSid}`);
+    if (answer === 'transfer') twiml.dial(business.actions.transfer.number);
+    else {
+      twiml.say("Sorry, we can't take your call right now. Please call back later.");
+      twiml.hangup();
+    }
     return res.type('text/xml').send(twiml.toString());
   }
 

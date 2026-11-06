@@ -20,6 +20,7 @@ import { CartesiaTTS } from './tts.js';
 import { Receptionist } from './receptionist.js';
 import { findBusinessById } from '../shared/businesses.js';
 import { buildGreeting } from '../shared/prompt.js';
+import { recordCall } from '../shared/usage.js';
 import { getTwilioClient } from './twilio.js';
 import { CallCosts } from './costs.js';
 
@@ -100,6 +101,9 @@ export function handleMediaStream(ws) {
   const tts = ECHO ? null : new CartesiaTTS();
   // The business that was called, loaded on the "start" event.
   let business = null;
+  // When the receptionist picked up, and who called: the call's minutes are recorded when it ends.
+  let answeredAt = null;
+  let caller = null;
   let receptionist = null;
   // The language the conversation is in right now; starts in the business's main language and
   // follows the caller (see replyLanguage).
@@ -216,6 +220,8 @@ export function handleMediaStream(ws) {
       return;
     }
     console.log(`Answering for ${business.name}`);
+    answeredAt = new Date();
+    caller = from;
     language = business.languages[0];
 
     receptionist = new Receptionist({
@@ -287,6 +293,11 @@ export function handleMediaStream(ws) {
     tts?.close();
     if (!ECHO && !reported && callSid) {
       reported = true;
+      if (business && answeredAt) {
+        recordCall({ businessId: business.id, callSid, caller, startedAt: answeredAt, endedAt: new Date() })
+          .then(({ minutes }) => console.log(`Call ${callSid}: ${minutes} min counted for ${business.name}`))
+          .catch((err) => console.error('Could not record the call minutes:', err.message));
+      }
       costs.audioSeconds = frames * 0.02;
       costs.deepgramRequestId = stt?.requestId;
       costs.report(callSid).catch((err) => console.error('Could not report call costs:', err.message));

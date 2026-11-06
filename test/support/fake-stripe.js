@@ -5,10 +5,23 @@
 import Stripe from 'stripe';
 
 export const WEBHOOK_SECRET = 'whsec_test_secret';
-export const PRICES = { bivoz_starter_monthly: 'price_starter', bivoz_pro_monthly: 'price_pro', bivoz_business_monthly: 'price_business' };
+export const PRICES = {
+  bivoz_starter_monthly: 'price_starter',
+  bivoz_pro_monthly: 'price_pro',
+  bivoz_business_monthly: 'price_business',
+  bivoz_extra_minute: 'price_minute',
+};
 
 // A Stripe subscription as the API returns it.
-export function subscription({ id = 'sub_1', customer = 'cus_1', status = 'active', plan = 'pro', periodEnd = 1796000000, cancels = false } = {}) {
+export function subscription({
+  id = 'sub_1',
+  customer = 'cus_1',
+  status = 'active',
+  plan = 'pro',
+  periodStart = 1793400000,
+  periodEnd = 1796000000,
+  cancels = false,
+} = {}) {
   return {
     id,
     object: 'subscription',
@@ -16,7 +29,7 @@ export function subscription({ id = 'sub_1', customer = 'cus_1', status = 'activ
     status,
     cancel_at_period_end: cancels,
     cancel_at: null,
-    items: { data: [{ current_period_end: periodEnd, price: { lookup_key: `bivoz_${plan}_monthly` } }] },
+    items: { data: [{ current_period_start: periodStart, current_period_end: periodEnd, price: { lookup_key: `bivoz_${plan}_monthly` } }] },
   };
 }
 

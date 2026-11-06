@@ -9,10 +9,9 @@ import {
   PhoneForwarded,
   Settings,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { type ReactNode, useCallback } from 'react';
 import type { Business } from '@/api/businesses';
-import { type Billing, useConfirmCheckout, useMe } from '@/api/owner';
+import { type Billing, useMe } from '@/api/owner';
 import { PageHeader } from '@/components/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -20,6 +19,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ManageBillingButton } from '@/features/billing/manage-billing-button';
 import { formatDate, planName } from '@/features/billing/plan-format';
+import { UsageMeter, usageLevel } from '@/features/billing/usage-meter';
+import { useCheckoutReturn } from '@/features/billing/use-checkout-return';
 import { cn } from '@/lib/utils';
 
 const LANGUAGE_NAMES: Record<string, string> = { en: 'English', es: 'Spanish' };
@@ -48,6 +49,13 @@ function statusOf(business: Business, billing: Billing | null): Status {
         billing.status === 'canceled'
           ? 'Your plan has ended, so calls are not being answered.'
           : 'Your receptionist is ready. It starts answering calls once you choose a plan.',
+    };
+  }
+  if (billing && usageLevel(billing.usage) === 'out') {
+    return {
+      tone: 'todo',
+      label: 'Out of minutes',
+      detail: "You've used this month's minutes, so new calls aren't answered. Buy extra minutes or upgrade your plan.",
     };
   }
   if (!business.twilio_number) {
@@ -151,10 +159,20 @@ function StatusCard({ business, billing }: { business: Business; billing: Billin
           <p className="text-muted-foreground text-sm">{status.detail}</p>
         </div>
       </div>
-      {status.tone === 'todo' && (
-        <CardContent className="border-t px-5 py-1 sm:px-6">
-          <Checklist business={business} billing={billing} />
+      {status.label === 'Out of minutes' ? (
+        <CardContent className="border-t px-5 py-4 sm:px-6">
+          <Button size="sm" asChild>
+            <Link to="/plan">
+              Buy extra minutes <ArrowRight />
+            </Link>
+          </Button>
         </CardContent>
+      ) : (
+        status.tone === 'todo' && (
+          <CardContent className="border-t px-5 py-1 sm:px-6">
+            <Checklist business={business} billing={billing} />
+          </CardContent>
+        )
       )}
     </Card>
   );
@@ -227,6 +245,29 @@ function PlanInfo({ business, billing }: { business: Business; billing: Billing 
   );
 }
 
+// This month's minutes, with a warning once 80% are used.
+function MinutesCard({ billing }: { billing: Billing }) {
+  const level = usageLevel(billing.usage);
+  return (
+    <Card className="py-5">
+      <CardContent className="flex flex-col gap-4 px-5 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-semibold">Minutes this month</h2>
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/plan">Buy minutes</Link>
+          </Button>
+        </div>
+        <UsageMeter usage={billing.usage} />
+        {level === 'low' && (
+          <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm">
+            You've used most of this month's minutes. Buy extra minutes or upgrade so calls keep being answered.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function Overview({ business, billing }: { business: Business; billing: Billing | null }) {
   const sendsTo = [
     business.notify_sms && `${business.notify_sms} by text`,
@@ -265,32 +306,14 @@ function Overview({ business, billing }: { business: Business; billing: Billing 
   );
 }
 
-// Coming back from Stripe Checkout (/?checkout=<session>): confirms the payment, then drops the
-// session from the address so a reload doesn't confirm it again.
-function useCheckoutReturn() {
-  const { checkout } = useSearch({ from: '/owner/' });
-  const navigate = useNavigate();
-  const confirm = useConfirmCheckout();
-  const started = useRef(false);
-  useEffect(() => {
-    if (!checkout || started.current) return;
-    started.current = true;
-    confirm.mutate(checkout, {
-      onSuccess: (billing) =>
-        billing.needsPlan
-          ? toast.info('Your payment is still being processed. This page updates once it goes through.')
-          : toast.success(`Payment received. You're on ${billing.plan ? planName(billing.plan) : 'your plan'}.`),
-      onError: (err) => toast.error(`Could not confirm your payment: ${err.message}`),
-      onSettled: () => navigate({ to: '/', search: {}, replace: true }),
-    });
-  }, [checkout, confirm, navigate]);
-}
-
 // What an owner sees after signing in: how their receptionist is doing, what's left to go live,
 // and its number, languages, plan and actions. Call history comes next.
 export function DashboardPage() {
   const { data, isPending, error } = useMe();
-  useCheckoutReturn();
+  const { checkout } = useSearch({ from: '/owner/' });
+  const navigate = useNavigate();
+  const clearCheckout = useCallback(() => navigate({ to: '/', search: {}, replace: true }), [navigate]);
+  useCheckoutReturn(checkout, clearCheckout);
 
   if (isPending) {
     return (
@@ -358,6 +381,7 @@ export function DashboardPage() {
         </Alert>
       )}
       <StatusCard business={business} billing={billing} />
+      {billing?.usage.limited && !billing.needsPlan && <MinutesCard billing={billing} />}
       <Overview business={business} billing={billing} />
     </div>
   );
