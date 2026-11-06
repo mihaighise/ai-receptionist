@@ -8,6 +8,7 @@
 import { migrate } from '../shared/db/migrate.js';
 import { createApp } from './app.js';
 import { signInProviders, warnIfAuthSchemaOutdated } from './auth.js';
+import { failInterruptedImports } from './menu-import.js';
 
 const PORT = Number(process.env.API_PORT ?? 3001);
 const HOST = process.env.API_HOST ?? '127.0.0.1';
@@ -26,6 +27,7 @@ else if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn('Stripe webhooks are o
 try {
   await migrate();
   await warnIfAuthSchemaOutdated();
+  await failInterruptedImports();
 } catch (err) {
   console.error(`Could not set up the database: ${err.message}`);
   console.error('Is Postgres running? Start it with: docker compose up -d db');

@@ -151,3 +151,29 @@ export const useBillingPortal = () =>
     mutationFn: () => api<{ url: string }>('POST', '/owner/billing/portal'),
     onSuccess: ({ url }) => window.location.assign(url),
   });
+
+// A menu read from photos (src/api/menu-import.js).
+export interface MenuImport {
+  id: string;
+  status: 'reading' | 'done' | 'failed';
+  photos: number;
+  // One line per item or note, in the same form as the common questions.
+  lines: string[];
+  error: string | null;
+}
+
+// Starts reading a menu from photos (already shrunk, see lib/shrink-photo.ts).
+export const useStartMenuImport = () =>
+  useMutation({
+    mutationFn: (photos: { mediaType: string; data: string }[]) =>
+      api<{ id: string }>('POST', '/owner/menu-imports', { photos }),
+  });
+
+// An upload, checked every 1.5 seconds while it's being read.
+export const useMenuImport = (id: string | null) =>
+  useQuery({
+    queryKey: ['owner', 'menu-import', id],
+    queryFn: () => api<MenuImport>('GET', `/owner/menu-imports/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (query.state.data?.status === 'reading' || !query.state.data ? 1500 : false),
+  });

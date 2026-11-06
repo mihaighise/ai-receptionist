@@ -11,6 +11,7 @@ import { adminRoutes } from './admin/routes.js';
 import { getAuth } from './auth.js';
 import { createStripe } from './billing.js';
 import { ownerRoutes } from './owner/routes.js';
+import { createMenuImports } from './menu-import.js';
 import { createPhoneNumbers } from './phone-numbers.js';
 import { stripeWebhook } from './stripe-webhook.js';
 
@@ -28,12 +29,14 @@ const requireAdminPassword = (adminPassword) => (req, res, next) => {
 
 // adminPassword: required for the admin routes when set. stripe: the Stripe client (null turns
 // billing off); stripeWebhookSecret: checks that webhooks come from Stripe; phoneNumbers: buys
-// paying businesses their Twilio number (dry run unless TWILIO_BUY_NUMBERS=live).
+// paying businesses their Twilio number (dry run unless TWILIO_BUY_NUMBERS=live); menuImports:
+// reads menus from photos with Claude.
 export function createApp({
   adminPassword,
   stripe = createStripe(),
   stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET,
   phoneNumbers = createPhoneNumbers(),
+  menuImports = createMenuImports(),
 } = {}) {
   const app = express();
   // Better Auth and the Stripe webhook read the request body themselves, so they come before any
@@ -41,6 +44,6 @@ export function createApp({
   app.all('/api/auth/{*path}', toNodeHandler(getAuth()));
   app.use('/api/stripe/webhook', stripeWebhook({ stripe, secret: stripeWebhookSecret, phoneNumbers }));
   app.use('/api/admin', requireAdminPassword(adminPassword), adminRoutes);
-  app.use('/api/owner', ownerRoutes({ stripe, phoneNumbers }));
+  app.use('/api/owner', ownerRoutes({ stripe, phoneNumbers, menuImports }));
   return app;
 }

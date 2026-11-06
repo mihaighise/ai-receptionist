@@ -83,6 +83,7 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `billing.js` | Subscriptions with Stripe: Checkout, the billing page, and keeping each business's copy of its subscription up to date |
 | `stripe-webhook.js` | `/api/stripe/webhook`: Stripe's notifications about subscriptions |
 | `stripe-setup.js` | Creates the plans and billing page settings in Stripe (`npm run stripe:setup`) |
+| `menu-import.js` | Reads a menu or price list from photos with Claude, as lines for the common questions |
 | `phone-numbers.js` | Buys a paying business its Twilio number and points it at the phone server (dry run by default) |
 | `auth.js` | Owner sign-in with Better Auth (`/api/auth/...`): Google now, Microsoft and Apple later |
 | `auth-sql.js` | Prints the SQL Better Auth needs after an upgrade (`npm run db:auth-sql`) |
@@ -186,6 +187,8 @@ Changes apply from the next call. No restart is needed.
 ### Owner app
 
 Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.
+
+**Menus and price lists from photos** (`src/api/menu-import.js`): on the setup's "Common questions" step, owners can add up to 5 photos of a menu or price list instead of typing it. The browser shrinks each photo to a JPEG of a few hundred KB; the API records the upload and has Claude (`claude-opus-5-5`, structured output) transcribe the sections, items, descriptions and prices exactly as printed, in the background. Each item becomes one line, like `Menu (Pizzas): Margherita, tomato, mozzarella, basil, $14.`, added to the common questions for the owner to check before saving. Photos aren't stored, and text in them is treated as content, never instructions. One upload is read at a time per owner, at most 20 a day; a photo costs about a cent or two to read. It uses the same `ANTHROPIC_API_KEY` as the phone server.
 
 A new owner's business has no Twilio number until its plan is paid for; then one is bought automatically (see Phone numbers below), or you add one in the admin site. You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
 

@@ -13,6 +13,9 @@
 //   POST /api/owner/billing/confirm    { sessionId } after Checkout -> the updated billing, and
 //                                      kind ('plan' or 'top_up'), and added: extra minutes it added
 //   POST /api/owner/billing/portal     -> { url } of Stripe's billing page
+//   POST /api/owner/menu-imports       { photos: [{ mediaType, data (base64) }] } -> { id }: starts
+//                                      reading a menu from photos (menu-import.js)
+//   GET  /api/owner/menu-imports/:id   { status, photos, lines, error }: poll until done or failed
 //
 // Owners only change what the receptionist knows and does. Its phone number, whether it answers
 // calls, its plan and who owns it are set by the app (and the admin site), never by the owner.
@@ -32,14 +35,17 @@ import {
   topUpOptions,
 } from '../billing.js';
 import { InputError, options, parseSettings, preview } from '../business-input.js';
+import { MenuImportError } from '../menu-import.js';
 
 // Where owners open the app; Stripe sends them back here.
 const APP_URL = process.env.BETTER_AUTH_URL;
 
 // stripe: the Stripe client, or null when billing isn't set up; phoneNumbers: buys a paying
-// business its number (phone-numbers.js).
-export function ownerRoutes({ stripe, phoneNumbers }) {
+// business its number (phone-numbers.js); menuImports: reads menus from photos (menu-import.js).
+export function ownerRoutes({ stripe, phoneNumbers, menuImports }) {
   const router = express.Router();
+  // Menu photos are large (the owner app shrinks each to a few hundred KB); other requests are small.
+  router.use('/menu-imports', express.json({ limit: '25mb' }));
   router.use(express.json());
 
   router.get('/providers', (_req, res) => {
@@ -111,9 +117,23 @@ export function ownerRoutes({ stripe, phoneNumbers }) {
 
   router.use('/billing', billing);
 
+  router.post('/menu-imports', async (req, res) => {
+    const { id } = await menuImports.start(req.user.id, req.body?.photos);
+    res.status(202).json({ id });
+  });
+
+  router.get('/menu-imports/:id', async (req, res) => {
+    const job = await menuImports.get(req.user.id, req.params.id);
+    if (!job) return res.status(404).json({ error: 'That upload no longer exists.' });
+    res.json(job);
+  });
+
   router.use((err, _req, res, _next) => {
     if (err instanceof InputError) return res.status(400).json({ error: err.message, fields: err.fields });
-    if (err instanceof BillingError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof BillingError || err instanceof MenuImportError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Those photos are too large.' });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'The request was not valid JSON.' });
     console.error('API error (owner):', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
