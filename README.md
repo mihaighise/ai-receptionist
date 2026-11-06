@@ -2,11 +2,14 @@
 
 An AI voice receptionist that answers phone calls. Callers talk to it in natural speech. It answers questions about the business, takes messages, transfers callers to a person and hangs up when the call is done.
 
+One server answers for many businesses. Each business has its own Twilio number, and its details, languages and enabled actions are stored in Postgres.
+
 ## How it works
 
 ```
 Caller ⇄ Twilio phone number
-            │  webhook: POST /incoming-call → TwiML <Connect><Stream>
+            │  webhook: POST /incoming-call → looks up the business that owns the dialed number
+            │                                → TwiML <Connect><Stream>
             ▼
       WebSocket /media-stream (8kHz mu-law audio, both directions)
             │
@@ -19,33 +22,36 @@ Claude's reply is spoken while it's still being written, sentence by sentence, w
 
 ## How a call goes
 
+### 0. Which business?
+Twilio tells the server which number was dialed. The server finds the active business that owns that number and loads its settings for the call. If no active business owns it, the caller hears "Sorry, this number is not in service." and the call ends.
+
 ### 1. Greeting
-As soon as the call connects, the receptionist says "Thanks for calling Sunrise Dental. How can I help you today?", then in Spanish "Si prefiere español, puede hablar en español." The greeting is fixed text, so it plays without waiting for Claude.
+As soon as the call connects, the receptionist greets the caller in the business's main language, then offers each of its other languages. For the demo business: "Thanks for calling Sunrise Dental. How can I help you today?", then in Spanish "Si prefiere español, puede hablar en español." The greeting is fixed text, so it plays without waiting for Claude.
 
 The greeting can't be interrupted, because many callers say "Hello?" the moment the call connects. Anything the caller says during it is still heard and answered once it ends.
 
 ### 2. Conversation
-- **What it knows:** only the business details in `src/business.js` (address, hours, phone, FAQ). If it doesn't know something, it says so and offers to take a message instead of guessing.
+- **What it knows:** only the business's details in the database (address, hours, phone, FAQ). If it doesn't know something, it says so and offers to take a message instead of guessing.
 - **How it speaks:** one or two short spoken sentences at a time, one question at a time, and numbers read out the way a person would.
-- **English and Spanish:** it replies in whichever language the caller is speaking, and switches back and forth mid-call. It only switches when a turn has at least two words and most of them are in the other language, so a lone "ok", "no" or "sí" doesn't flip it. The whole conversation stays in Claude's history, so nothing is forgotten when the caller switches.
+- **English and Spanish:** for a business that speaks both, it replies in whichever language the caller is speaking, and switches back and forth mid-call. It only switches when a turn has at least two words and most of them are in the other language, so a lone "ok", "no" or "sí" doesn't flip it. The whole conversation stays in Claude's history, so nothing is forgotten when the caller switches.
 - **Interruptions:** if the caller talks over the receptionist, its audio stops right away and it listens. What it had already said is kept, so Claude knows where it left off.
   - It takes at least two real words to interrupt ("wait, actually", "no, Tuesday"), so background noise transcribed as a single word doesn't cut it off.
   - Listening sounds ("mhm", "uh-huh", "ajá") and short answers ("okay", "yeah", "sí") don't interrupt. Sounds alone are ignored, and the receptionist carries on.
   - A short answer or a one-word turn like "Stop." is still answered once the caller finishes saying it, so a quick "Yes" to "Is that right?" is never lost.
 
 ### 3. Taking a message
-Appointment requests, callbacks and anything the receptionist can't handle become a message for the staff. It works as one message per call:
+For businesses with the `messages` feature on, appointment requests, callbacks and anything the receptionist can't handle become a message for the staff. It works as one message per call:
 
 1. The receptionist collects the caller's name, callback number (offering the number they're calling from) and what they need, then reads it back.
 2. Once the caller confirms, Claude uses `take_message`. The message is kept as a draft for now.
 3. If the caller then changes or adds something ("make it Wednesday instead"), the receptionist reads back the change and calls `take_message` again, which replaces the draft. If they change their mind, `cancel_message` deletes it.
-4. **When the call ends**, the final version is saved to `data/messages.jsonl` and sent to the owner by SMS and/or WhatsApp. A cancelled message is not sent.
+4. **When the call ends**, the final version is saved to `data/messages.jsonl` and sent to the business's owner by SMS and/or WhatsApp (`notify_sms`, `notify_whatsapp`). A cancelled message is not sent.
 
-Messages are always written in English, translated if the caller spoke Spanish. A message is marked **URGENT** when it matches the business's urgency rule (for the dental clinic: severe pain, swelling, bleeding or a knocked-out tooth).
+Messages are always written in English, translated if the caller spoke Spanish. A message is marked **URGENT** when it matches the business's urgency rule (`urgent_when`; for the dental clinic: severe pain, swelling, bleeding or a knocked-out tooth).
 
 ### 4. Ending the call
 - **The receptionist ends it:** after saying goodbye, Claude uses `end_call`. The goodbye finishes playing before the line hangs up.
-- **Transfer to a person:** if the caller asks for a person, Claude uses `transfer_call` after saying "One moment, I'll put you through." It's only offered when `TRANSFER_NUMBER` is set; otherwise the receptionist offers to take a message.
+- **Transfer to a person:** if the caller asks for a person, Claude uses `transfer_call` after saying "One moment, I'll put you through." It's only offered when the business has the `transfers` feature on and a `transfer_number`; otherwise the receptionist offers to take a message.
 - **The caller hangs up:** nothing more is sent to Claude, so no reply is generated and no new message is taken for a call nobody is on. A message the caller already confirmed is still sent.
 
 ### 5. Afterwards
@@ -53,19 +59,48 @@ The server log shows what the call cost: Claude from the tokens used, Deepgram f
 
 ## Files
 
+The backend in `src/` is split by job. Code in `shared/` is used by both the phone server and the API, so a change there can affect live calls.
+
+**`src/phone/`: answering calls** (`npm run dev`)
+
 | File | What it does |
 |---|---|
-| `src/server.js` | Express webhook for Twilio and the WebSocket server |
-| `src/mediaStream.js` | Runs one call: routes audio between Twilio, Deepgram and Cartesia, and handles interruptions |
-| `src/receptionist.js` | The conversation with Claude, and the tools |
-| `src/business.js` | **Business details, the actions turned on for it, and the system prompt. Edit this for your business** |
-| `src/twilio.js` | Shared Twilio REST client, used for transfers, hangups and alerts |
-| `src/costs.js` | Adds up what each call used and prints its cost per service when the call ends |
-| `src/stt.js` / `src/tts.js` | Deepgram and Cartesia WebSocket clients |
+| `server.js` | Express webhook for Twilio (picks the business by the dialed number) and the WebSocket server |
+| `mediaStream.js` | Runs one call: loads its business, routes audio between Twilio, Deepgram and Cartesia, and handles interruptions |
+| `receptionist.js` | The conversation with Claude, and the tools the business has turned on |
+| `stt.js` / `tts.js` | Deepgram and Cartesia WebSocket clients |
+| `twilio.js` | Shared Twilio REST client, used for transfers, hangups and alerts |
+| `costs.js` | Adds up what each call used and prints its cost per service when the call ends |
+
+**`src/api/`: the backend for the web apps** (`npm run api`)
+
+| File | What it does |
+|---|---|
+| `server.js` | The API server; mounts each app's routes under `/api` |
+| `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, and preview them |
+
+**`src/shared/`: used by both**
+
+| File | What it does |
+|---|---|
+| `businesses.js` | Reads and writes businesses in the database |
+| `prompt.js` | Builds the greeting and Claude's instructions from a business |
+| `languages.js` | The languages the receptionist can speak, with the greeting lines in each |
+| `db/pool.js` | Postgres connection pool |
+| `db/migrate.js` | Runs the SQL files in `db/migrations` that haven't run yet (on startup, or `npm run db:migrate`) |
+| `db/seed.js` | Demo businesses, added with `npm run db:seed` |
+
+**Everything else**
+
+| Path | What it holds |
+|---|---|
+| `web/` | **Admin site**: a React app with its own `package.json`, Dockerfile and README |
+| `db/migrations/` | The database schema, one numbered SQL file per change |
+| `Dockerfile`, `docker-compose.yml` | Containers for Postgres, the phone server, the API, the admin site and the ngrok tunnel |
 
 ## Setup
 
-Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://console.twilio.com), [Anthropic](https://console.anthropic.com), [Deepgram](https://console.deepgram.com), [Cartesia](https://play.cartesia.ai) and [ngrok](https://ngrok.com) for local development.
+Requirements: Node.js 20.12 or newer, Docker Desktop, plus accounts with [Twilio](https://console.twilio.com), [Anthropic](https://console.anthropic.com), [Deepgram](https://console.deepgram.com), [Cartesia](https://play.cartesia.ai) and [ngrok](https://ngrok.com) for local development.
 
 1. **Install dependencies**
    ```bash
@@ -76,23 +111,69 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
    cp .env.example .env
    ```
    Fill in the keys in `.env`. Real keys go only in `.env`, which git ignores. Never put them in `.env.example`.
-3. **Start a tunnel** so Twilio can reach your machine. Set `PUBLIC_URL` in `.env` to this URL.
+3. **Start the database and add the demo businesses**
+   ```bash
+   docker compose up -d db
+   npm run db:seed
+   ```
+   Postgres runs in Docker on port 5433 and keeps its data between restarts. The seed puts your Twilio number on Sunrise Dental. To use another number, change `twilio_number` in `src/shared/db/seed.js` and run the seed again.
+4. **Start a tunnel** so Twilio can reach your machine. Set `PUBLIC_URL` in `.env` to this URL.
    ```bash
    ngrok http 3000 --url=<your-ngrok-domain>
    ```
-4. **Start the server**
+5. **Start the server**
    ```bash
    npm run dev
    ```
    You can check the tunnel at `https://<your-ngrok-domain>/health`, which should show `ok`.
-5. **Point your Twilio number at the server.** In the Twilio Console, go to Phone Numbers → Manage → Active numbers, open your number, then the **Configure** tab. Set **A call comes in** to **Webhook**, `https://<your-ngrok-domain>/incoming-call`, **HTTP POST**, then click **Save configuration**.
-6. **Call your Twilio number.**
+6. **Point your Twilio number at the server.** In the Twilio Console, go to Phone Numbers → Manage → Active numbers, open your number, then the **Configure** tab. Set **A call comes in** to **Webhook**, `https://<your-ngrok-domain>/incoming-call`, **HTTP POST**, then click **Save configuration**.
+7. **Call your Twilio number.**
+
+### Running everything in Docker
+
+Instead of steps 4 and 5, the server and the tunnel can run in containers too:
+
+```bash
+docker compose up --build                     # database + server + admin site (http://localhost:3001)
+docker compose --profile tunnel up --build    # database + server + ngrok (needs NGROK_AUTHTOKEN in .env)
+```
+
+Run the seed inside Docker with `docker compose exec app npm run db:seed`. Code changes need `--build` again, so `npm run dev` is quicker while developing.
+
+### Businesses
+
+The easiest way to add and edit businesses is the admin site, the React app in `web/`. It needs the API running too, so use two terminals:
+```bash
+npm run api:dev                 # API on :3001 (restarts on code changes)
+cd web && npm run dev           # admin site on http://localhost:5173
+```
+(The first time, run `npm install` in `web/`.) In Docker, `docker compose up --build` serves the built site at http://localhost:3001 instead.
+
+The site lists every business and edits all of its settings. **Preview** shows the greeting and Claude's instructions for what's in the form, before saving. It only accepts connections from this computer, and the ngrok tunnel doesn't expose it. Set `ADMIN_PASSWORD` in `.env` to also require a password.
+
+Each row in the `businesses` table is one business. See `db/migrations/001_create_businesses.sql` for every column. The main ones:
+
+| Column | What it does |
+|---|---|
+| `twilio_number` | The number callers dial (E.164, e.g. `+18005550100`). Empty means no calls reach it |
+| `languages` | e.g. `{en,es}`. The first is the main language, used for the greeting |
+| `features` | `messages` (take messages) and/or `transfers` (transfer to `transfer_number`) |
+| `notify_sms`, `notify_whatsapp` | Where messages are sent |
+| `urgent_when` | When a message is marked urgent |
+| `active` | `false` stops calls reaching it |
+
+To look at or change businesses directly:
+```bash
+docker compose exec db psql -U receptionist -c "SELECT name, twilio_number, languages, features FROM businesses"
+```
+Changes apply from the next call. No restart is needed.
 
 ## Configuration (`.env`)
 
 | Variable | Required | Description |
 |---|---|---|
 | `PUBLIC_URL` | yes | Public https URL Twilio uses to reach the server (your ngrok URL) |
+| `DATABASE_URL` | yes | Postgres connection. The default in `.env.example` matches `docker-compose.yml` |
 | `TWILIO_ACCOUNT_SID` | yes | Needed to transfer calls and hang up |
 | `TWILIO_AUTH_TOKEN` | recommended | Checks that webhook requests really come from Twilio |
 | `ANTHROPIC_API_KEY` | yes | Claude API key. The API is billed separately from Claude.ai subscriptions |
@@ -100,9 +181,13 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 | `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` | yes | Text-to-speech key, and a voice ID from the Cartesia voice library |
 | `CARTESIA_VOICE_ID_ES` | no | A different voice for Spanish replies. Without it the same voice speaks both languages |
 | `DEEPGRAM_LANGUAGE` | no | `multi` (default) hears English and Spanish; `en` for English only |
-| `TRANSFER_NUMBER` | no | Number to forward callers to when they ask for a person. Leave empty to disable transfers |
-| `OWNER_SMS_NUMBER` | no | Owner's mobile; each message is texted here. Texts to US numbers need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance), otherwise they fail with error 30034 |
-| `OWNER_WHATSAPP_NUMBER` | no | Owner's WhatsApp number; each message is also sent here |
+| `TRANSFER_NUMBER` | no | Seed only: the demo business's transfer number. Leave empty to disable transfers |
+| `OWNER_SMS_NUMBER` | no | Seed only: the demo business owner's mobile; each message is texted here. Texts to US numbers need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance), otherwise they fail with error 30034 |
+| `OWNER_WHATSAPP_NUMBER` | no | Seed only: the demo business owner's WhatsApp number; each message is also sent here |
+| `NGROK_AUTHTOKEN` | no | Only for running ngrok in Docker (`--profile tunnel`) |
+| `API_PORT` | no | API port when running outside Docker. Defaults to `3001` |
+| `WEB_PORT` | no | Admin site port in Docker. Defaults to `3001` |
+| `ADMIN_PASSWORD` | no | Password for the admin site. Without it, anyone on this computer can open it |
 | `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |
 | `ECHO` | no | `true` plays the caller's own voice back, to test the audio stream without the AI services |
 | `RECORD_CALLS` | no | `true` has Twilio record calls, for checking audio quality. Recordings are billed by Twilio |
@@ -113,6 +198,9 @@ Requirements: Node.js 20.12 or newer, plus accounts with [Twilio](https://consol
 
 ## Troubleshooting
 
+- **Server exits with "Could not set up the database":** Postgres isn't running. Start it with `docker compose up -d db`.
+- **Caller hears "Sorry, this number is not in service":** no active business has that number as `twilio_number`. Check the `businesses` table, or run `npm run db:seed`.
+- **Changed `OWNER_*` or `TRANSFER_NUMBER` in `.env` but nothing changed:** those are only read by the seed. Run `npm run db:seed` again.
 - **Call fails immediately and the caller hears "not available":** on a Twilio trial account, only verified numbers can call in (error 21264). Add your number under Phone Numbers → Manage → Verified Caller IDs, or upgrade the account.
 - **"An application error has occurred":** the webhook isn't reachable or rejected the request. Check the ngrok inspector at http://localhost:4040 and the server log. If the log says `invalid Twilio signature`, `PUBLIC_URL` or `TWILIO_AUTH_TOKEN` doesn't match.
 - **The receptionist apologizes and says it's having trouble:** usually a Claude API error, such as no credit balance. The server log shows the exact error.

@@ -1,0 +1,82 @@
+# Everything the receptionist runs on, in containers:
+#   docker compose up -d db                          only the database (then run the server with npm run dev)
+#   docker compose up --build                        database + phone server + admin site (http://localhost:3001)
+#   docker compose --profile tunnel up --build       ...plus the ngrok tunnel
+# Settings come from .env, which compose also reads to fill in ${...} below.
+
+name: ai-receptionist
+
+services:
+  # Postgres: the businesses and their settings. Data is kept in the pgdata volume between restarts.
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: receptionist
+      POSTGRES_PASSWORD: receptionist
+      POSTGRES_DB: receptionist
+    # Published so the server can also run outside Docker (npm run dev) and reach it on
+    # localhost:5433 (5433 rather than Postgres's usual 5432, which is often taken by a local install).
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U receptionist -d receptionist"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # The phone server (src/phone, via the Dockerfile). Waits for the database to be ready before starting.
+  app:
+    build: .
+    init: true # forwards Ctrl+C / docker stop to Node so it shuts down right away
+    env_file: .env
+    environment:
+      # Inside Docker the database is reached by its service name, not localhost.
+      DATABASE_URL: postgres://receptionist:receptionist@db:5432/receptionist
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - ./data:/app/data # saved messages end up in data/ on your machine, as before
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # API for the web apps (src/api). Not published: only the web container below talks to it.
+  api:
+    build: .
+    init: true
+    command: ["node", "src/api/server.js"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://receptionist:receptionist@db:5432/receptionist
+      API_HOST: 0.0.0.0 # reachable by the web container
+      API_PORT: 3001 # web/nginx.conf forwards /api here
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Admin site (the React app in web/), at http://localhost:3001. nginx serves it and forwards
+  # /api to the API. Published on 127.0.0.1 only, so other computers can't reach it.
+  web:
+    build: ./web
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3001}:80"
+    depends_on:
+      - api
+
+  # ngrok tunnel so Twilio can reach the server. Only started with --profile tunnel.
+  # Needs NGROK_AUTHTOKEN in .env, and PUBLIC_URL set to your ngrok domain.
+  ngrok:
+    image: ngrok/ngrok:3-alpine
+    profiles: [tunnel]
+    command: ["http", "app:${PORT:-3000}", "--url=${PUBLIC_URL}"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    ports:
+      - "4040:4040" # ngrok inspector at http://localhost:4040
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
