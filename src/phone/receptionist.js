@@ -3,7 +3,7 @@
 //
 // Each caller turn works like this:
 //   1. The caller's words are added to the conversation history as a "user" message.
-//   2. Claude gets the system prompt (from business.js), the whole history and the tools.
+//   2. Claude gets the system prompt (from prompt.js), the whole history and the tools.
 //   3. Claude's reply streams back; each finished sentence is sent to the voice right away.
 //   4. If Claude asked to use a tool (e.g. take_message), we run it, add the result to the
 //      history and ask Claude again, so it can tell the caller what happened.
@@ -14,51 +14,55 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { appendFile, mkdir } from 'node:fs/promises';
-import { BUSINESS, LANGUAGES, buildSystemPrompt } from './business.js';
+import { LANGUAGES } from '../shared/languages.js';
+import { buildSystemPrompt } from '../shared/prompt.js';
 import { getTwilioClient } from './twilio.js';
 
 // Reads ANTHROPIC_API_KEY from the environment.
 const client = new Anthropic();
 const MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-5-5';
 // One JSON object per line ("JSON Lines"), so new messages are simply appended.
-const MESSAGES_FILE = new URL('../data/messages.jsonl', import.meta.url);
+const MESSAGES_FILE = new URL('../../data/messages.jsonl', import.meta.url);
 
-// Only offer Claude the tools this business has turned on.
+// Only offer Claude the tools this business has turned on (see businesses.js).
 // Each tool has a name, a description (Claude reads it to decide when to use the tool) and
 // an input schema (the fields Claude must fill in). Claude never runs anything itself: it asks
 // for a tool, and #runTool below does the actual work.
 function buildTools({ actions }) {
-  const tools = [
-    {
-      name: 'take_message',
-      description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this. There is one message per call: calling this again replaces the earlier message, so always include every request the caller still wants, with any changes.',
-      // Stream tool input as it's generated instead of buffering it. The API then no longer
-      // validates the input for us, so #runTool checks the fields itself.
-      eager_input_streaming: true,
-      input_schema: {
-        type: 'object',
-        properties: {
-          caller_name: { type: 'string', description: "The caller's name" },
-          callback_number: { type: 'string', description: 'Best number to call the caller back on' },
-          message: { type: 'string', description: 'What the caller needs, with any dates, times or addresses they mentioned' },
-          urgent: { type: 'boolean', description: 'True if the staff should act on this right away' },
+  const tools = [];
+  if (actions.messages) {
+    tools.push(
+      {
+        name: 'take_message',
+        description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this. There is one message per call: calling this again replaces the earlier message, so always include every request the caller still wants, with any changes.',
+        // Stream tool input as it's generated instead of buffering it. The API then no longer
+        // validates the input for us, so #runTool checks the fields itself.
+        eager_input_streaming: true,
+        input_schema: {
+          type: 'object',
+          properties: {
+            caller_name: { type: 'string', description: "The caller's name" },
+            callback_number: { type: 'string', description: 'Best number to call the caller back on' },
+            message: { type: 'string', description: 'What the caller needs, with any dates, times or addresses they mentioned' },
+            urgent: { type: 'boolean', description: 'True if the staff should act on this right away' },
+          },
+          required: ['caller_name', 'callback_number', 'message', 'urgent'],
         },
-        required: ['caller_name', 'callback_number', 'message', 'urgent'],
       },
-    },
-    {
-      name: 'cancel_message',
-      description: 'Delete the message saved earlier in this call, when the caller no longer wants it. Nothing is sent to the staff.',
-      eager_input_streaming: true,
-      input_schema: { type: 'object', properties: {}, required: [] },
-    },
-    {
-      name: 'end_call',
-      description: 'Hang up after the caller is done and you have said goodbye.',
-      eager_input_streaming: true,
-      input_schema: { type: 'object', properties: {}, required: [] },
-    },
-  ];
+      {
+        name: 'cancel_message',
+        description: 'Delete the message saved earlier in this call, when the caller no longer wants it. Nothing is sent to the staff.',
+        eager_input_streaming: true,
+        input_schema: { type: 'object', properties: {}, required: [] },
+      },
+    );
+  }
+  tools.push({
+    name: 'end_call',
+    description: 'Hang up after the caller is done and you have said goodbye.',
+    eager_input_streaming: true,
+    input_schema: { type: 'object', properties: {}, required: [] },
+  });
   // Don't offer a tool that can't work: with no transfer number, Claude isn't told transfers exist.
   if (actions.transfer.number) {
     tools.push({
@@ -75,14 +79,9 @@ function buildTools({ actions }) {
   return tools;
 }
 
-// Built once at startup. Keeping the tool list identical on every request also keeps
-// Claude's prompt cache valid (see cache_control in #generate).
-const TOOLS = buildTools(BUSINESS);
-
-// Send a saved message to the business owner on each configured channel.
+// Send a saved message to the business owner on each of the business's channels.
 // Failures are logged; the message is still in the file.
-async function notifyOwner(entry, smsFrom) {
-  const { sms, whatsapp } = BUSINESS.actions.notify;
+async function notifyOwner(entry, smsFrom, { sms, whatsapp }) {
   const body = [
     `${entry.urgent ? 'URGENT ' : ''}New message from ${entry.caller_name} (${entry.callback_number}):`,
     entry.message,
@@ -130,6 +129,9 @@ export class Receptionist {
   // and "assistant" (Claude's replies and tool requests) messages. Only ever appended to.
   #messages = [];
   #system;
+  // The tools this business has turned on. Built once per call and identical on every request,
+  // which also keeps Claude's prompt cache valid (see cache_control in #generate).
+  #tools;
   // Incremented whenever the current reply is abandoned (caller interrupted or spoke again).
   // Async work started for an older turn checks this and stops quietly.
   #turn = 0;
@@ -146,15 +148,19 @@ export class Receptionist {
   // Set once close() has run; the call is over and the draft has been handled.
   #closed = false;
 
+  // business: the business that was called (businesses.js)
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
   // call: { callSid, from, to, waitForPlayback(), transfer(), hangup() }
   // costs: a CallCosts (costs.js) that adds up the tokens used
-  constructor({ speech, call, costs }) {
+  constructor({ business, speech, call, costs }) {
+    this.business = business;
     this.speech = speech;
     this.call = call;
     this.costs = costs;
+    this.#language = business.languages[0];
     // Built once per call; it includes this caller's number.
-    this.#system = buildSystemPrompt({ callerNumber: call.from });
+    this.#system = buildSystemPrompt(business, { callerNumber: call.from });
+    this.#tools = buildTools(business);
   }
 
   get busy() {
@@ -166,7 +172,7 @@ export class Receptionist {
   // and records its result before the caller's new words are added. Claude requires every
   // tool request to be answered before the conversation continues.
   // language is the code ('en' or 'es') the caller is speaking, chosen in mediaStream.js.
-  respond(text, language = 'en') {
+  respond(text, language = this.business.languages[0]) {
     this.cancel();
     const turn = this.#turn;
     this.#running = this.#running.then(() => this.#run(turn, text, language));
@@ -200,7 +206,7 @@ export class Receptionist {
     } catch (err) {
       console.error('Could not save the message:', err.message);
     }
-    await notifyOwner(entry, this.call.to);
+    await notifyOwner(entry, this.call.to, this.business.actions.notify);
   }
 
   // Handles one caller turn: ask Claude, run any tools it asks for, and repeat until Claude
@@ -268,7 +274,7 @@ export class Receptionist {
       // chosen by Anthropic, inside the same request.
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      tools: TOOLS,
+      tools: this.#tools,
       messages: this.#messages,
     });
     this.#stream = stream;
@@ -359,7 +365,7 @@ export class Receptionist {
         return result('Message deleted; nothing will be sent. Tell the caller it has been cancelled.');
 
       case 'transfer_call':
-        if (!BUSINESS.actions.transfer.number) {
+        if (!this.business.actions.transfer.number) {
           return result('Transfers are not available right now. Offer to take a message instead.', true);
         }
         // Let the caller hear "One moment, I'll put you through" before the line changes.
@@ -376,7 +382,7 @@ export class Receptionist {
         return result('Call ended.');
 
       default:
-        return result(`Unknown tool ${block.name}. Available tools: take_message, cancel_message, transfer_call, end_call.`, true);
+        return result(`Unknown tool ${block.name}. Available tools: ${this.#tools.map((t) => t.name).join(', ')}.`, true);
     }
   }
 }

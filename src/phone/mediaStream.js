@@ -7,6 +7,8 @@
 // This file is the "switchboard" for a call: it owns the connections to Twilio, Deepgram and
 // Cartesia, tracks which replies are still playing, and handles the caller interrupting.
 // The conversation itself (what to say, which tools to use) lives in receptionist.js.
+// Which business was called arrives in the "start" event (see server.js), and its settings are
+// loaded from the database before the greeting is spoken.
 //
 // Twilio sends these events on the socket, in this order:
 //   connected -> start (call details) -> media (repeated, ~50 per second) -> stop
@@ -16,7 +18,8 @@ import twilio from 'twilio';
 import { DeepgramSTT } from './stt.js';
 import { CartesiaTTS } from './tts.js';
 import { Receptionist } from './receptionist.js';
-import { BUSINESS, GREETING, LANGUAGES } from './business.js';
+import { findBusinessById } from '../shared/businesses.js';
+import { buildGreeting } from '../shared/prompt.js';
 import { getTwilioClient } from './twilio.js';
 import { CallCosts } from './costs.js';
 
@@ -59,10 +62,10 @@ const onlySounds = (text) => words(text).every((w) => SOUNDS.has(w));
 
 // The language to reply in after a caller turn, given the language Deepgram heard for each word.
 // Short answers like "ok", "no" or "sí" could be either language, so it only switches when the
-// turn has at least two words and most of them are in another language the receptionist speaks.
-function replyLanguage(wordLanguages, current) {
+// turn has at least two words and most of them are in another language the business speaks.
+function replyLanguage(wordLanguages, current, languages) {
   const counts = {};
-  for (const lang of wordLanguages) if (lang in LANGUAGES) counts[lang] = (counts[lang] ?? 0) + 1;
+  for (const lang of wordLanguages) if (languages.includes(lang)) counts[lang] = (counts[lang] ?? 0) + 1;
   const [top, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] ?? [];
   return top && wordLanguages.length >= 2 && count > wordLanguages.length / 2 ? top : current;
 }
@@ -95,8 +98,11 @@ export function handleMediaStream(ws) {
   // the "start" event arrives and the greeting needs to be spoken.
   const stt = ECHO ? null : new DeepgramSTT();
   const tts = ECHO ? null : new CartesiaTTS();
+  // The business that was called, loaded on the "start" event.
+  let business = null;
   let receptionist = null;
-  // The language the conversation is in right now; follows the caller (see replyLanguage).
+  // The language the conversation is in right now; starts in the business's main language and
+  // follows the caller (see replyLanguage).
   let language = 'en';
   // Adds up what this call uses, printed as a cost summary when the call ends.
   const costs = new CallCosts();
@@ -188,14 +194,32 @@ export function handleMediaStream(ws) {
       if (onlySounds(text)) return console.log(`Ignored while talking: ${text}`);
       interrupt();
     }
-    language = replyLanguage(wordLanguages, language);
-    receptionist?.respond(text, language);
+    if (!receptionist) return; // the business is still loading
+    language = replyLanguage(wordLanguages, language, business.languages);
+    receptionist.respond(text, language);
   });
 
-  // Called on the "start" event, once we know who is calling. `from` is the caller and `to` is
-  // our Twilio number, both passed as <Parameter>s by the webhook in server.js.
-  function startReceptionist({ from, to }) {
+  // Called on the "start" event, once we know who is calling. `from` is the caller, `to` is
+  // our Twilio number and `businessId` the business that owns it, all passed as <Parameter>s by
+  // the webhook in server.js.
+  async function startReceptionist({ from, to, businessId }) {
+    try {
+      business = businessId ? await findBusinessById(businessId) : null;
+    } catch (err) {
+      console.error('Could not load the business:', err.message);
+    }
+    if (ended) return; // the caller hung up while it was loading
+    if (!business) {
+      // Without a business there's nothing to say, so end the call instead of leaving it silent.
+      console.error(`No active business ${businessId} for call ${callSid}; hanging up`);
+      getTwilioClient().calls(callSid).update({ status: 'completed' }).catch((err) => console.error('Could not hang up:', err.message));
+      return;
+    }
+    console.log(`Answering for ${business.name}`);
+    language = business.languages[0];
+
     receptionist = new Receptionist({
+      business,
       speech,
       costs,
       call: {
@@ -214,7 +238,7 @@ export function handleMediaStream(ws) {
         // ends our <Connect><Stream>, which closes this WebSocket.
         transfer: () => {
           const twiml = new twilio.twiml.VoiceResponse();
-          twiml.dial(BUSINESS.actions.transfer.number);
+          twiml.dial(business.actions.transfer.number);
           return getTwilioClient().calls(callSid).update({ twiml: twiml.toString() });
         },
         hangup: () => getTwilioClient().calls(callSid).update({ status: 'completed' }),
@@ -222,24 +246,25 @@ export function handleMediaStream(ws) {
     });
 
     // The greeting is fixed text, so it's spoken right away without asking Claude.
-    // English first, then the Spanish line as a separate reply in Spanish. The Spanish part is
-    // only sent once Cartesia has finished generating the English one, so their audio can't get
-    // mixed up. Cartesia generates much faster than real time, so this happens within a fraction
-    // of a second and the Spanish audio is queued on Twilio right behind the English.
-    // Neither part can be interrupted (see greetingIds).
-    const english = speech.begin('en');
-    greetingIds.add(english.contextId);
-    english.say(GREETING.en);
-    english.end();
-    const sayInSpanish = (contextId) => {
-      if (contextId !== english.contextId) return;
-      tts.off('done', sayInSpanish);
-      const spanish = speech.begin('es');
-      greetingIds.add(spanish.contextId);
-      spanish.say(GREETING.es);
-      spanish.end();
+    // Each part (e.g. the English welcome, then the Spanish line) is a separate reply in its own
+    // language. A part is only sent once Cartesia has finished generating the one before it, so
+    // their audio can't get mixed up. Cartesia generates much faster than real time, so this
+    // happens within a fraction of a second and each part is queued on Twilio right behind the last.
+    // No part can be interrupted (see greetingIds).
+    const speakGreeting = ([part, ...rest]) => {
+      const reply = speech.begin(part.language);
+      greetingIds.add(reply.contextId);
+      reply.say(part.text);
+      reply.end();
+      if (rest.length === 0) return;
+      const next = (contextId) => {
+        if (contextId !== reply.contextId) return;
+        tts.off('done', next);
+        speakGreeting(rest);
+      };
+      tts.on('done', next);
     };
-    tts.on('done', sayInSpanish);
+    speakGreeting(buildGreeting(business));
 
     // Twilio records what it actually hears on the call; useful for debugging audio quality.
     // "dual" keeps the caller and the receptionist on separate channels.
@@ -287,7 +312,9 @@ export function handleMediaStream(ws) {
           format: msg.start.mediaFormat,
           params: msg.start.customParameters,
         });
-        if (!ECHO) startReceptionist(msg.start.customParameters ?? {});
+        if (!ECHO) {
+          startReceptionist(msg.start.customParameters ?? {}).catch((err) => console.error('Could not start the receptionist:', err));
+        }
         break;
 
       case 'media':
