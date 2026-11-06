@@ -74,7 +74,7 @@ test('on a phone, a tab bar replaces the sidebar', async ({ page, signIn }) => {
   await page.goto('/');
   const tabs = page.getByRole('navigation', { name: 'Main' }).locator('visible=true');
   await expect(tabs).toHaveCount(1);
-  await expect(tabs.getByRole('link')).toHaveText(['Home', 'Receptionist', 'Billing']);
+  await expect(tabs.getByRole('link')).toHaveText(['Home', 'Calls', 'Receptionist', 'Billing']);
   await tabs.getByRole('link', { name: 'Billing' }).click();
   await expect(page).toHaveURL('/setup'); // no business yet: the plan page sends you to setup first
   await expect(tabs.getByRole('link', { name: 'Receptionist' })).toHaveAttribute('aria-current', 'page');

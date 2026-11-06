@@ -14,6 +14,7 @@ import {
 } from '../shared/businesses.js';
 import { PAID_STATUSES, PLANS, TOP_UP, isPaid, planForLookupKey } from '../shared/plans.js';
 import { addTopUp, usageFor } from '../shared/usage.js';
+import { releaseDateFor } from './phone-numbers.js';
 
 // Pinned, so an SDK upgrade can't change what the API sends without us noticing.
 const API_VERSION = '2026-10-28.endive';
@@ -91,6 +92,7 @@ function toSubscription(subscription) {
     periodStart: item ? new Date(item.current_period_start * 1000) : null,
     periodEnd: item ? new Date(item.current_period_end * 1000) : null,
     cancels: Boolean(subscription.cancel_at_period_end || subscription.cancel_at),
+    endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
   };
 }
 
@@ -215,6 +217,8 @@ export async function billingSummary(business) {
     status: business.subscription_status,
     periodEnd: business.subscription_period_end,
     cancels: business.subscription_cancels,
+    // When the business's number will be released because its plan ended, or null.
+    numberReleasesAt: releaseDateFor(business),
   };
 }
 

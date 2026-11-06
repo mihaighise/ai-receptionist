@@ -2,6 +2,7 @@
 //   /                                the owner app (signed-in owners only)
 //   /sign-in                         owner sign-in
 //   /setup                           set up (or change) the owner's receptionist
+//   /calls                           the calls the receptionist answered, and its messages
 //   /plan                            choose a plan and pay for it (Stripe Checkout)
 //   /admin                           the admin site: the business list
 //   /admin/businesses/new            add a business
@@ -10,6 +11,7 @@
 
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
 import { PlanPage } from './features/billing/plan-page';
+import { CallsPage } from './features/calls/calls-page';
 import { DashboardPage } from './features/owner/dashboard-page';
 import { OwnerLayout } from './features/owner/owner-layout';
 import { SignInPage } from './features/owner/sign-in-page';
@@ -61,6 +63,7 @@ const routeTree = rootRoute.addChildren([
       // Stripe sends owners back with ?checkout=<Checkout Session ID> after paying for a plan.
       validateSearch: checkoutSearch,
     }),
+    createRoute({ getParentRoute: () => ownerRoute, path: '/calls', component: CallsPage }),
     createRoute({ getParentRoute: () => ownerRoute, path: '/setup', component: SetupPage }),
     createRoute({
       getParentRoute: () => ownerRoute,

@@ -147,6 +147,8 @@ export class Receptionist {
   #draft = null;
   // Set once close() has run; the call is over and the draft has been handled.
   #closed = false;
+  // Set once the caller was put through to a person.
+  #transferred = false;
 
   // business: the business that was called (businesses.js)
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
@@ -165,6 +167,19 @@ export class Receptionist {
 
   get busy() {
     return this.#stream !== null;
+  }
+
+  // What happened on the call, for its call history: whether the caller was transferred, and the
+  // message taken ({ caller_name, callback_number, message, urgent }), once the call is over.
+  get outcome() {
+    const draft = this.#closed ? this.#draft : null;
+    const message = draft && {
+      caller_name: draft.caller_name,
+      callback_number: draft.callback_number,
+      message: draft.message,
+      urgent: draft.urgent,
+    };
+    return { transferred: this.#transferred, message };
   }
 
   // The caller finished a turn. Any reply still in progress is cancelled first.
@@ -371,6 +386,7 @@ export class Receptionist {
         // Let the caller hear "One moment, I'll put you through" before the line changes.
         await this.call.waitForPlayback();
         this.#ended = true;
+        this.#transferred = true;
         await this.call.transfer();
         return result('Call transferred.');
 

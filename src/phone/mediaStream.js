@@ -294,7 +294,15 @@ export function handleMediaStream(ws) {
     if (!ECHO && !reported && callSid) {
       reported = true;
       if (business && answeredAt) {
-        recordCall({ businessId: business.id, callSid, caller, startedAt: answeredAt, endedAt: new Date() })
+        // After receptionist.close() above, so the final message is known.
+        recordCall({
+          businessId: business.id,
+          callSid,
+          caller,
+          startedAt: answeredAt,
+          endedAt: new Date(),
+          ...receptionist?.outcome,
+        })
           .then(({ minutes }) => console.log(`Call ${callSid}: ${minutes} min counted for ${business.name}`))
           .catch((err) => console.error('Could not record the call minutes:', err.message));
       }

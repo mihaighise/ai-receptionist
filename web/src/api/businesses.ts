@@ -55,11 +55,15 @@ export interface Options {
 
 // The latest automatic Twilio number order for a business (src/api/phone-numbers.js).
 export interface NumberOrder {
-  // dry_run: what would have been bought; buying; bought; failed (see error).
-  status: 'dry_run' | 'buying' | 'bought' | 'failed';
+  // dry_run: what would have been bought; buying; bought; failed (see error); released (after
+  // the plan ended).
+  status: 'dry_run' | 'buying' | 'bought' | 'failed' | 'released';
   area_code: string | null;
   phone_number: string | null;
   error: string | null;
+  released_at: string | null;
+  // Why the last try to release the number failed; it's tried again every hour.
+  release_error: string | null;
   created_at: string;
 }
 

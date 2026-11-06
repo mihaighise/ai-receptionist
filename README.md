@@ -188,6 +188,8 @@ Changes apply from the next call. No restart is needed.
 
 Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.
 
+**Call history** (`/calls`): every call the receptionist answers is kept in the `calls` table with its caller, length, minutes, whether it was transferred, and the message taken, if any. Owners see them grouped by day on the Calls page (a message opens to show who to call back, with a tap-to-call link) and the latest 5 on the dashboard. The page loads 50 at a time and refreshes every minute.
+
 **Menus and price lists from photos** (`src/api/menu-import.js`): on the setup's "Common questions" step, owners can add up to 5 photos of a menu or price list instead of typing it. The browser shrinks each photo to a JPEG of a few hundred KB; the API records the upload and has Claude (`claude-opus-5-5`, structured output) transcribe the sections, items, descriptions and prices exactly as printed, in the background. Each item becomes one line, like `Menu (Pizzas): Margherita, tomato, mozzarella, basil, $14.`, added to the common questions for the owner to check before saving. Photos aren't stored, and text in them is treated as content, never instructions. One upload is read at a time per owner, at most 20 a day; a photo costs about a cent or two to read. It uses the same `ANTHROPIC_API_KEY` as the phone server.
 
 A new owner's business has no Twilio number until its plan is paid for; then one is bought automatically (see Phone numbers below), or you add one in the admin site. You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
@@ -222,7 +224,7 @@ Owners pay with Stripe. Businesses they set up themselves only answer calls whil
 - `live`: buys it, from your Twilio balance (about $1.15 a month per US local number). Texts from US numbers also need [A2P 10DLC registration](https://console.twilio.com/us1/develop/sms/regulatory-compliance). A trial account can only have one number.
 - `off`: numbers are only added in the admin site.
 
-Numbers aren't released when a plan ends yet; release them in the Twilio console.
+**Releasing numbers**: when a plan ends (Stripe's `canceled`), the business keeps its number for 7 days, in case the owner comes back, and the dashboard says until when. Then the API gives it back to Twilio, so it stops costing money: it checks on startup and every hour. Only numbers the app bought are released, never ones added in the admin site (like Sunrise Dental's). In `dry-run` the release is only logged; a failed release is recorded and tried again an hour later. An owner who subscribes again after that gets a new number.
 
 **Setting up Stripe** (once, in test mode):
 1. In the [Stripe Dashboard](https://dashboard.stripe.com), switch to test mode (or a sandbox), open **Developers → API keys** and put the secret key (`sk_test_...`) in `STRIPE_SECRET_KEY` in `.env`.
