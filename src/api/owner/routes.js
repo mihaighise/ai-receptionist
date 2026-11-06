@@ -36,8 +36,9 @@ import { InputError, options, parseSettings, preview } from '../business-input.j
 // Where owners open the app; Stripe sends them back here.
 const APP_URL = process.env.BETTER_AUTH_URL;
 
-// stripe: the Stripe client, or null when billing isn't set up.
-export function ownerRoutes({ stripe }) {
+// stripe: the Stripe client, or null when billing isn't set up; phoneNumbers: buys a paying
+// business its number (phone-numbers.js).
+export function ownerRoutes({ stripe, phoneNumbers }) {
   const router = express.Router();
   router.use(express.json());
 
@@ -99,6 +100,7 @@ export function ownerRoutes({ stripe }) {
     const { business, kind, added } = await confirmCheckout(stripe, {
       business: req.business,
       sessionId: req.body?.sessionId,
+      phoneNumbers,
     });
     res.json({ ...(await billingSummary(business)), kind, added });
   });

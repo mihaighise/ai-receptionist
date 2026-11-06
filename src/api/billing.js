@@ -95,9 +95,10 @@ function toSubscription(subscription) {
 }
 
 // Refreshes a business's copy of this subscription from Stripe (fetched again, so events that
-// arrive out of order can't leave an old state behind). Returns the business row, or null if the
+// arrive out of order can't leave an old state behind), and once it's paid for, gets the business
+// its phone number (phoneNumbers: from phone-numbers.js). Returns the business row, or null if the
 // subscription isn't one of ours.
-export async function syncSubscription(stripe, subscriptionId) {
+export async function syncSubscription(stripe, subscriptionId, phoneNumbers) {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
   const business = await findBusinessRowByStripeCustomer(customerId);
@@ -114,7 +115,8 @@ export async function syncSubscription(stripe, subscriptionId) {
   if (isPaid(subscription.status) && isPaid(business.subscription_status) && business.stripe_subscription_id !== subscription.id) {
     console.warn(`Business ${business.id} has two paid subscriptions (${business.stripe_subscription_id}, ${subscription.id})`);
   }
-  return saveSubscription(customerId, toSubscription(subscription));
+  const saved = await saveSubscription(customerId, toSubscription(subscription));
+  return (await phoneNumbers?.ensureNumberFor(saved)) ?? saved;
 }
 
 // Buying extra minutes: returns the address of a Stripe Checkout page for a one-time payment of
@@ -158,7 +160,7 @@ export async function fulfillTopUp(stripe, sessionId) {
 // if the webhook hasn't arrived yet. Only accepts a Checkout Session for this business's own
 // customer. Returns { business, kind, added }: kind is 'plan' or 'top_up', added the extra
 // minutes that payment added.
-export async function confirmCheckout(stripe, { business, sessionId }) {
+export async function confirmCheckout(stripe, { business, sessionId, phoneNumbers }) {
   if (typeof sessionId !== 'string' || !sessionId.startsWith('cs_')) throw new BillingError('Unknown checkout.');
   let session;
   try {
@@ -176,7 +178,8 @@ export async function confirmCheckout(stripe, { business, sessionId }) {
   }
   if (!session.subscription) return { business, kind: 'plan', added: 0 };
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
-  return { business: (await syncSubscription(stripe, subscriptionId)) ?? business, kind: 'plan', added: 0 };
+  const synced = await syncSubscription(stripe, subscriptionId, phoneNumbers);
+  return { business: synced ?? business, kind: 'plan', added: 0 };
 }
 
 // The Customer Portal configuration npm run stripe:setup created, looked up once per process.

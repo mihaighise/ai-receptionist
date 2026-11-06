@@ -6,6 +6,7 @@
 //   POST   /api/admin/businesses          create one
 //   PUT    /api/admin/businesses/:id      replace one's settings
 //   DELETE /api/admin/businesses/:id      delete one
+//   GET    /api/admin/businesses/:id/number-order   its latest automatic Twilio number order, or null
 //   POST   /api/admin/preview             greeting and Claude's instructions for unsaved form values
 //
 // Invalid input gets a 400 with { error, fields: { column: message } }, so the page can point at
@@ -15,6 +16,7 @@ import express from 'express';
 import { createBusiness, deleteBusiness, listBusinessRows, updateBusiness } from '../../shared/businesses.js';
 import { findUserIdByEmail } from '../../shared/users.js';
 import { InputError, fieldsForDatabaseError, options, parseBusiness, preview, text } from '../business-input.js';
+import { latestNumberOrder } from '../phone-numbers.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -55,6 +57,10 @@ adminRoutes.delete('/businesses/:id', async (req, res) => {
   const deleted = UUID.test(req.params.id) && (await deleteBusiness(req.params.id));
   if (!deleted) return res.status(404).json({ error: 'That business no longer exists.' });
   res.status(204).end();
+});
+
+adminRoutes.get('/businesses/:id/number-order', async (req, res) => {
+  res.json(UUID.test(req.params.id) ? await latestNumberOrder(req.params.id) : null);
 });
 
 // Uses the same code as a real call, on the values in the form (saved or not).

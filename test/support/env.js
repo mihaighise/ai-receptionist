@@ -13,6 +13,12 @@ Object.assign(process.env, {
   // Turns on the Google button. Nothing is ever sent to Google with them.
   GOOGLE_CLIENT_ID: 'test-google-client-id',
   GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
+  // Where bought Twilio numbers would point. Numbers are only ever bought by a fake Twilio client.
+  PUBLIC_URL: 'https://phone.test',
+  TWILIO_BUY_NUMBERS: 'dry-run',
 });
-// Billing is off unless a test turns it on with a fake Stripe client (test/support/fake-stripe.js).
-for (const name of ['ADMIN_PASSWORD', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) delete process.env[name];
+// Billing is off unless a test turns it on with a fake Stripe client (test/support/fake-stripe.js), and
+// there are no Twilio keys, so nothing can reach Twilio (tests use test/support/fake-twilio.js).
+for (const name of ['ADMIN_PASSWORD', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN']) {
+  delete process.env[name];
+}

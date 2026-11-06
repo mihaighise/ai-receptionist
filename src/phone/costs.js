@@ -8,7 +8,7 @@
 // Deepgram and Twilio take a little while to work out the cost, so the summary is printed
 // once both are available (or after about 2 minutes).
 
-import { getTwilioClient } from './twilio.js';
+import { getTwilioClient } from '../shared/twilio.js';
 
 // US dollars per million tokens. Top-level cache_control uses the 5-minute cache, written at 1.25x input.
 const CLAUDE_PRICES = {

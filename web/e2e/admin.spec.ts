@@ -1,6 +1,7 @@
 // The admin site (/admin): adding, editing, previewing and deleting businesses, and linking owners.
 
 import { createBusiness } from '../../src/shared/businesses.js';
+import { pool } from '../../src/shared/db/pool.js';
 import { expect, expectNoSidewaysScroll, PHONE, test } from './fixtures';
 
 const sunriseDental = {
@@ -92,4 +93,25 @@ test('the admin site fits a phone', async ({ page }) => {
   await page.getByRole('link', { name: /Sunrise Dental/ }).click();
   await expect(page.getByRole('link', { name: 'All businesses' })).toBeVisible();
   await expectNoSidewaysScroll(page);
+});
+
+test('a business shows its latest automatic number order', async ({ page }) => {
+  const { id } = await createBusiness({ ...sunriseDental, twilio_number: null });
+  await page.goto(`/admin/businesses/${id}`);
+  await expect(page.getByText('Automatic number')).toBeHidden();
+
+  await pool.query("INSERT INTO phone_number_orders (business_id, status, area_code) VALUES ($1, 'dry_run', '512')", [
+    id,
+  ]);
+  await page.reload();
+  await expect(
+    page.getByText('Dry run: would have bought a number in area code 512. Nothing was bought.'),
+  ).toBeVisible();
+
+  await pool.query(
+    "INSERT INTO phone_number_orders (business_id, status, error, created_at) VALUES ($1, 'failed', 'Insufficient funds', now() + interval '1 minute')",
+    [id],
+  );
+  await page.reload();
+  await expect(page.getByText('Could not buy a number: Insufficient funds.')).toBeVisible();
 });
