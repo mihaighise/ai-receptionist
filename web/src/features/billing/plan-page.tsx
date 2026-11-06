@@ -2,6 +2,7 @@ import { Navigate } from '@tanstack/react-router';
 import { ArrowRight, Check, CircleCheck, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { type Plan, useCheckout, useMe, usePlans } from '@/api/owner';
+import { PageHeader } from '@/components/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ManageBillingButton } from './manage-billing-button';
-import { planName } from './plan-format';
+import { formatDate, planName } from './plan-format';
 
 // What every plan includes; they differ only in call minutes.
 const INCLUDED = [
@@ -67,15 +68,45 @@ export function PlanPage() {
 
   const { billing } = me.data;
   if (billing && !billing.needsPlan) {
+    const current = plans.data.plans.find((plan) => plan.code === billing.plan);
     return (
-      <div className="mx-auto flex max-w-xl flex-col items-start gap-4">
-        <h1 className="font-semibold text-2xl">Your plan</h1>
-        <p className="text-muted-foreground">
-          {billing.plan
-            ? `You're on ${planName(billing.plan)}. Change your plan or card, or cancel, on the billing page.`
-            : "Your receptionist doesn't need a plan."}
-        </p>
-        {billing.plan && <ManageBillingButton />}
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Plan & billing" description="Your plan, and where to change it." />
+        {current ? (
+          <Card className="max-w-2xl">
+            <CardContent className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-muted-foreground text-sm">Current plan</p>
+                  <p className="font-semibold text-2xl tracking-tight">{current.name}</p>
+                  <p className="text-muted-foreground text-sm">
+                    {current.minutes.toLocaleString('en-US')} call minutes a month
+                  </p>
+                </div>
+                <p>
+                  <span className="font-semibold text-2xl">${current.priceCents / 100}</span>
+                  <span className="text-muted-foreground"> / month</span>
+                </p>
+              </div>
+              {billing.periodEnd && (
+                <p className="text-sm">
+                  {billing.cancels
+                    ? `Your plan ends on ${formatDate(billing.periodEnd)}.`
+                    : `Renews on ${formatDate(billing.periodEnd)}.`}
+                </p>
+              )}
+              <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-muted-foreground text-sm">
+                  You're on {planName(current.code)}. Change your plan or card, see invoices, or cancel on Stripe's
+                  billing page. Upgrades start right away; downgrades at the end of the month.
+                </p>
+                <ManageBillingButton variant="default" />
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <p className="text-muted-foreground">Your receptionist is included: there's nothing to pay.</p>
+        )}
       </div>
     );
   }
@@ -86,14 +117,14 @@ export function PlanPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-semibold text-2xl">Choose a plan</h1>
-        <p className="text-muted-foreground">
-          {billing?.status === 'canceled'
+      <PageHeader
+        title="Choose a plan"
+        description={
+          billing?.status === 'canceled'
             ? 'Your plan has ended. Choose one to have your receptionist answer calls again.'
-            : 'Your receptionist starts answering calls once you choose a plan. Cancel any time.'}
-        </p>
-      </div>
+            : 'Your receptionist starts answering calls once you choose a plan. Cancel any time.'
+        }
+      />
       {checkout.error && (
         <Alert variant="destructive">
           <AlertDescription>{checkout.error.message}</AlertDescription>

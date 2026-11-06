@@ -1,10 +1,12 @@
 import { useSearch } from '@tanstack/react-router';
-import { Loader2, Phone } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useSignInProviders } from '@/api/owner';
+import { Logo } from '@/components/logo';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { authClient } from '@/lib/auth-client';
 import { APP_NAME } from '@/lib/brand';
 
@@ -63,41 +65,53 @@ export function SignInPage() {
   const message = failed ?? (error && (ERRORS[error] ?? 'Signing in didn’t work. Please try again.'));
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-muted/40 px-4 py-12">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="items-center text-center">
-          <div className="mx-auto mb-2 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Phone className="size-5" />
-          </div>
-          <CardTitle className="text-xl">Sign in to {APP_NAME}</CardTitle>
-          <CardDescription>Your AI receptionist answers every call, in English and Spanish.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {message && (
-            <Alert variant="destructive">
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full"
-            onClick={signInWithGoogle}
-            disabled={isPending || !hasGoogle || redirecting}
-          >
-            {redirecting ? <Loader2 className="animate-spin" /> : <GoogleLogo />}
-            Continue with Google
-          </Button>
-          {!isPending && !hasGoogle && (
-            <p className="text-center text-muted-foreground text-xs">
-              Google sign-in isn't set up on this server yet (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET).
+    <div className="relative flex min-h-dvh flex-col bg-background">
+      {/* A soft glow behind the card. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(ellipse_at_top,var(--color-accent),transparent_70%)]"
+      />
+      <header className="relative flex items-center justify-between px-4 py-4 sm:px-6">
+        <Logo />
+        <ThemeToggle />
+      </header>
+      <main className="relative flex flex-1 items-center justify-center px-4 pt-4 pb-16">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">Sign in to {APP_NAME}</h1>
+            <p className="mt-2 text-muted-foreground">
+              Your AI receptionist answers every call, in English and Spanish.
             </p>
-          )}
-          <p className="text-center text-muted-foreground text-xs">
+          </div>
+          <Card className="shadow-lg shadow-black/5">
+            <CardContent className="flex flex-col gap-4">
+              {message && (
+                <Alert variant="destructive">
+                  <AlertDescription>{message}</AlertDescription>
+                </Alert>
+              )}
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-11 w-full"
+                onClick={signInWithGoogle}
+                disabled={isPending || !hasGoogle || redirecting}
+              >
+                {redirecting ? <Loader2 className="animate-spin" /> : <GoogleLogo />}
+                Continue with Google
+              </Button>
+              {!isPending && !hasGoogle && (
+                <p className="text-center text-muted-foreground text-xs">
+                  Google sign-in isn't set up on this server yet (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET).
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <p className="mt-6 text-center text-muted-foreground text-sm">
             New here? Signing in with Google creates your account.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </main>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { ApiError } from '@/api/client';
 import { useGreetingPreview, useOwnerOptions, useSaveMyBusiness } from '@/api/owner';
 import { CheckboxGroup } from '@/components/checkbox-group';
 import { FormField } from '@/components/form-field';
+import { PageHeader } from '@/components/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -448,15 +449,15 @@ export function SetupWizard({ business }: { business: Business | null }) {
   );
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="font-semibold text-2xl">{business ? 'Your receptionist' : 'Set up your receptionist'}</h1>
-        <p className="text-muted-foreground">
-          {business
+    <div className="flex max-w-3xl flex-col gap-6">
+      <PageHeader
+        title={business ? 'Your receptionist' : 'Set up your receptionist'}
+        description={
+          business
             ? 'Change what your receptionist knows and does. Changes apply from the next call.'
-            : 'Tell your receptionist about your business. It takes about five minutes, and you can change everything later.'}
-        </p>
-      </div>
+            : 'Tell your receptionist about your business. It takes about five minutes, and you can change everything later.'
+        }
+      />
 
       <Stepper step={step} reached={reached} onSelect={goTo} />
 

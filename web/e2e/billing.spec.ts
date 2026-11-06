@@ -26,7 +26,8 @@ test('a business without a plan asks for one, and the plan page lists them', asy
   await ownerWithBusiness(signIn);
   await page.goto('/');
   await expect(page.getByText('Choose a plan to go live')).toBeVisible();
-  await page.getByRole('link', { name: 'See plans' }).click();
+  // The checklist's button (the plan card has one too).
+  await page.getByRole('link', { name: 'See plans' }).first().click();
   await expect(page).toHaveURL('/plan');
   for (const [name, price, minutes] of [
     ['Starter', '$79', '200 call minutes a month'],
@@ -101,7 +102,7 @@ test('a failed payment and a cancelled plan are explained', async ({ page, signI
 
   await pool.query("UPDATE businesses SET subscription_status = 'canceled'");
   await page.reload();
-  await expect(page.getByText('Your plan has ended')).toBeVisible();
+  await expect(page.getByText('Your plan has ended', { exact: true })).toBeVisible();
   await expect(page.getByText('Choose a plan to go live')).toBeVisible();
 });
 
