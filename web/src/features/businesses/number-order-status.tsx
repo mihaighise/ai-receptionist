@@ -1,4 +1,5 @@
 import { useNumberOrder } from '@/api/businesses';
+import { formatPhone } from '@/lib/phone';
 import { cn } from '@/lib/utils';
 
 const when = (iso: string) =>
@@ -14,9 +15,9 @@ export function NumberOrderStatus({ businessId }: { businessId: string }) {
     dry_run: `Dry run: would have bought a number in ${area}. Nothing was bought.`,
     buying: `Buying a number in ${area}…`,
     bought: order.release_error
-      ? `Bought ${order.phone_number} automatically. Releasing it failed: ${order.release_error}. It's tried again every hour.`
-      : `Bought ${order.phone_number} automatically.`,
-    released: `Released ${order.phone_number} after the plan ended.`,
+      ? `Bought ${formatPhone(order.phone_number)} automatically. Releasing it failed: ${order.release_error}. It's tried again every hour.`
+      : `Bought ${formatPhone(order.phone_number)} automatically.`,
+    released: `Released ${formatPhone(order.phone_number)} after the plan ended.`,
     failed: `Could not buy a number: ${order.error}. It's tried again on the next payment event.`,
   }[order.status];
   return (

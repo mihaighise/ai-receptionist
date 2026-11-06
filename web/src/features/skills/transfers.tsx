@@ -1,5 +1,6 @@
 import { FormField } from '@/components/form-field';
-import { Input } from '@/components/ui/input';
+import { PhoneField } from '@/components/phone-input';
+import { formatPhone } from '@/lib/phone';
 import type { SkillUi } from './types';
 
 // Transfer callers to a person (src/skills/transfers.js).
@@ -7,7 +8,7 @@ export const transfersSkill: SkillUi = {
   id: 'transfers',
   Settings: ({ form }) => {
     const {
-      register,
+      control,
       formState: { errors },
     } = form;
     return (
@@ -17,12 +18,11 @@ export const transfersSkill: SkillUi = {
           When a caller asks for a person, or something urgent can't wait, the receptionist puts them through.
         </p>
         <FormField label="Transfer callers to" htmlFor="transfer_number" error={errors.transfer_number?.message}>
-          <Input
+          <PhoneField
+            control={control}
+            name="transfer_number"
             id="transfer_number"
-            inputMode="tel"
-            placeholder="+15125550100"
-            aria-invalid={!!errors.transfer_number}
-            {...register('transfer_number')}
+            invalid={!!errors.transfer_number}
           />
         </FormField>
       </fieldset>
@@ -30,5 +30,5 @@ export const transfersSkill: SkillUi = {
   },
   check: (values) =>
     values.transfer_number.trim() ? {} : { transfer_number: 'Enter the number to transfer callers to.' },
-  summary: (settings, label) => `${label} at ${settings.transfer_number}`,
+  summary: (settings, label) => `${label} at ${formatPhone(settings.transfer_number)}`,
 };

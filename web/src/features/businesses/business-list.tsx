@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatPhone } from '@/lib/phone';
 
 // The sidebar: every business, with its Twilio number and languages, and a button to add one.
 export function BusinessList() {
@@ -76,7 +77,7 @@ export function BusinessList() {
                 {!b.active && <Badge variant="outline">Paused</Badge>}
               </span>
               <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                {b.twilio_number ?? (
+                {formatPhone(b.twilio_number) || (
                   <>
                     <PhoneOff className="size-3" /> No number
                   </>

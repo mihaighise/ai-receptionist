@@ -1,9 +1,4 @@
-import { formatDay, formatDuration, formatPhone } from './format';
-
-test('US numbers are written the way people read them', () => {
-  expect(formatPhone('+18312490526')).toBe('+1 (831) 249-0526');
-  expect(formatPhone('+40700000000')).toBe('+40700000000');
-});
+import { formatDay, formatDuration } from './format';
 
 test('durations are in minutes and seconds', () => {
   expect([0, 45, 60, 151, 3600].map(formatDuration)).toEqual(['0 s', '45 s', '1 min', '2 min 31 s', '60 min']);

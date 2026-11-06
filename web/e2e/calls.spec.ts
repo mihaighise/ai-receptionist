@@ -58,7 +58,7 @@ test('calls are listed by day, and a message opens to show who to call back', as
   await expect(message).toHaveAttribute('aria-expanded', 'false');
   await message.click();
   await expect(message).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('link', { name: '+1 (512) 555-0111' })).toHaveAttribute('href', 'tel:+15125550111');
+  await expect(page.getByRole('link', { name: '+1 512 555 0111' })).toHaveAttribute('href', 'tel:+15125550111');
   await expect(page.getByText('Burst pipe in the kitchen', { exact: true })).toBeVisible();
 });
 
@@ -117,7 +117,7 @@ test('after a plan ends, the dashboard says until when the number is kept', asyn
   await page.goto('/');
   await expect(
     page.getByText(
-      'Your number +1 (512) 555-0199 is kept until December 13, 2026; choose a plan before then to keep it.',
+      'Your number +1 512 555 0199 is kept until December 13, 2026; choose a plan before then to keep it.',
     ),
   ).toBeVisible();
 });
@@ -129,5 +129,5 @@ test('the admin site shows a released number', async ({ page }) => {
     [id],
   );
   await page.goto(`/admin/businesses/${id}`);
-  await expect(page.getByText('Released +15125550199 after the plan ended.')).toBeVisible();
+  await expect(page.getByText('Released +1 512 555 0199 after the plan ended.')).toBeVisible();
 });

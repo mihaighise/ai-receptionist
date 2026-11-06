@@ -57,7 +57,7 @@ test('the dashboard shows the owner’s receptionist', async ({ page, signIn }) 
   await page.goto('/');
   await expect(page.getByText('Rapid Flow Plumbing')).toBeVisible();
   await expect(page.getByText('Answering calls')).toBeVisible();
-  await expect(page.getByText('+1 (831) 249-0526', { exact: true })).toBeVisible();
+  await expect(page.getByText('+1 831 249 0526', { exact: true })).toBeVisible();
   await expect(page.getByText('English and Spanish')).toBeVisible();
 });
 

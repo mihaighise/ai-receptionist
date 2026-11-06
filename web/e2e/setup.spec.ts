@@ -38,8 +38,8 @@ test('a new owner sets up their receptionist', async ({ page, signIn }) => {
   // Review: the greeting comes from the same code as a real call.
   await expect(page.getByText('“Thanks for calling Rapid Flow Plumbing. How can I help you today?”')).toBeVisible();
   await expect(page.getByText('“Si prefiere español, puede hablar en español.”')).toBeVisible();
-  await expect(page.getByText('Take messages for the staff, sent to +15125550100 by text')).toBeVisible();
-  await expect(page.getByText('Transfer callers to a person at +15125550199')).toBeVisible();
+  await expect(page.getByText('Take messages for the staff, sent to +1 512 555 0100 by text')).toBeVisible();
+  await expect(page.getByText('Transfer callers to a person at +1 512 555 0199')).toBeVisible();
   await expect(page.getByText('A call-out costs $89.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Finish setup' }).click();
@@ -88,9 +88,9 @@ test('each step says what is missing, and the message goes once it is fixed', as
   await page.getByLabel('Transfer callers to a person').check();
   await page.getByLabel('Transfer callers to', { exact: true }).fill('12345');
   await next(page);
-  await expect(page.getByText('Use international format, e.g. +18005550100.')).toBeVisible();
+  await expect(page.getByText('Enter a complete phone number, e.g. +1 800 555 0100.')).toBeVisible();
   await page.getByLabel('Transfer callers to', { exact: true }).fill('+15125550199');
-  await expect(page.getByText('Use international format, e.g. +18005550100.')).toBeHidden();
+  await expect(page.getByText('Enter a complete phone number, e.g. +1 800 555 0100.')).toBeHidden();
   await next(page);
   await expect(page.getByLabel('What do callers often ask?')).toBeVisible();
 });

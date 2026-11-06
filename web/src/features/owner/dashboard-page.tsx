@@ -272,8 +272,8 @@ function MinutesCard({ billing }: { billing: Billing }) {
 
 function Overview({ business, billing }: { business: Business; billing: Billing | null }) {
   const sendsTo = [
-    business.notify_sms && `${business.notify_sms} by text`,
-    business.notify_whatsapp && `${business.notify_whatsapp} on WhatsApp`,
+    business.notify_sms && `${formatPhone(business.notify_sms)} by text`,
+    business.notify_whatsapp && `${formatPhone(business.notify_whatsapp)} on WhatsApp`,
   ].filter(Boolean);
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">

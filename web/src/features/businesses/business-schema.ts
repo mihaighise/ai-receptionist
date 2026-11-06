@@ -24,7 +24,10 @@ export const slugify = (name: string) =>
 // An optional phone number in international format.
 export const phoneField = z
   .string()
-  .refine((value) => !value.trim() || E164.test(normalizePhone(value)), 'Use international format, e.g. +18005550100.');
+  .refine(
+    (value) => !value.trim() || E164.test(normalizePhone(value)),
+    'Enter a complete phone number, e.g. +1 800 555 0100.',
+  );
 
 export const businessFormSchema = z
   .object({

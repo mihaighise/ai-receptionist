@@ -1,8 +1,7 @@
 // How numbers, times and durations are written in the owner app.
 
-// "+18312490526" -> "+1 (831) 249-0526"; other countries are shown as stored.
-export const formatPhone = (number: string) =>
-  /^\+1\d{10}$/.test(number) ? `+1 (${number.slice(2, 5)}) ${number.slice(5, 8)}-${number.slice(8)}` : number;
+// Phone numbers: formatPhone in lib/phone.ts.
+export { formatPhone } from './phone';
 
 // 151 -> "2 min 31 s", 45 -> "45 s"
 export function formatDuration(seconds: number) {
