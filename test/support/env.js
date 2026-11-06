@@ -16,9 +16,13 @@ Object.assign(process.env, {
   // Where bought Twilio numbers would point. Numbers are only ever bought by a fake Twilio client.
   PUBLIC_URL: 'https://phone.test',
   TWILIO_BUY_NUMBERS: 'dry-run',
+  // Nothing listens here, so a request to Claude that a test didn't fake fails at once instead of
+  // reaching the real API (tests fake Claude with test/support/fake-claude.js).
+  ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
 });
 // Billing is off unless a test turns it on with a fake Stripe client (test/support/fake-stripe.js), and
 // there are no Twilio keys, so nothing can reach Twilio (tests use test/support/fake-twilio.js).
-for (const name of ['ADMIN_PASSWORD', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN']) {
+const REAL_KEYS = ['ADMIN_PASSWORD', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'];
+for (const name of [...REAL_KEYS, 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_PROFILE']) {
   delete process.env[name];
 }

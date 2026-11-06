@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useBlocker, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Loader2, Pencil } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, type UseFormReturn, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { Business, Options } from '@/api/businesses';
@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { APP_NAME } from '@/lib/brand';
 import { cn } from '@/lib/utils';
+import { MenuPhotos } from './menu-photos';
 import {
   emptySetup,
   type SetupValues,
@@ -256,21 +257,32 @@ function ActionsStep({ form, options }: { form: Form; options: Options }) {
 }
 
 function FaqStep({ form }: { form: Form }) {
+  // Lines read from menu photos go after what's already written, for the owner to check.
+  const addLines = useCallback(
+    (lines: string[]) => {
+      const current = form.getValues('faq').trimEnd();
+      form.setValue('faq', [current, ...lines].filter(Boolean).join('\n'), { shouldDirty: true });
+    },
+    [form],
+  );
   return (
-    <FormField
-      label="What do callers often ask?"
-      htmlFor="faq"
-      hint="One fact per line. Your receptionist only knows what you write here and in the earlier steps, so the more you add, the fewer calls end in a message."
-    >
-      <Textarea
-        id="faq"
-        rows={8}
-        placeholder={
-          'We serve all of Austin and Round Rock.\nA standard call-out costs $89, waived if we do the repair.\nWe offer 24/7 emergency service for burst pipes and flooding.\nWe accept cards and cash, not checks.'
-        }
-        {...form.register('faq')}
-      />
-    </FormField>
+    <div className="flex flex-col gap-4">
+      <FormField
+        label="What do callers often ask?"
+        htmlFor="faq"
+        hint="One fact per line. Your receptionist only knows what you write here and in the earlier steps, so the more you add, the fewer calls end in a message."
+      >
+        <Textarea
+          id="faq"
+          rows={8}
+          placeholder={
+            'We serve all of Austin and Round Rock.\nA standard call-out costs $89, waived if we do the repair.\nWe offer 24/7 emergency service for burst pipes and flooding.\nWe accept cards and cash, not checks.'
+          }
+          {...form.register('faq')}
+        />
+      </FormField>
+      <MenuPhotos onLines={addLines} />
+    </div>
   );
 }
 
