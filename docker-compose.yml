@@ -52,6 +52,7 @@ services:
       DATABASE_URL: postgres://receptionist:receptionist@db:5432/receptionist
       API_HOST: 0.0.0.0 # reachable by the web container
       API_PORT: 3001 # web/nginx.conf forwards /api here
+      BETTER_AUTH_URL: http://localhost:${WEB_PORT:-3001} # owners open the web container
     depends_on:
       db:
         condition: service_healthy

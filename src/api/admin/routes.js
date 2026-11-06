@@ -17,6 +17,7 @@ import {
 } from '../../shared/businesses.js';
 import { LANGUAGES } from '../../shared/languages.js';
 import { buildGreeting, buildSystemPrompt } from '../../shared/prompt.js';
+import { findUserIdByEmail } from '../../shared/users.js';
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -70,6 +71,16 @@ function parseBusiness(body) {
   return values;
 }
 
+// owner_email -> the owner's user ID (null when empty). The owner must have signed in once, which
+// creates their user.
+async function ownerIdFor(body) {
+  const email = text(body.owner_email);
+  if (!email) return null;
+  const id = await findUserIdByEmail(email);
+  if (!id) throw new InputError({ owner_email: 'No one has signed in with this email yet.' });
+  return id;
+}
+
 // Database errors the admin can fix, as field messages: a slug or Twilio number already in use.
 function fieldsForDatabaseError(err) {
   if (err.code !== '23505') return null; // unique_violation
@@ -95,11 +106,12 @@ adminRoutes.get('/businesses', async (_req, res) => {
 });
 
 adminRoutes.post('/businesses', async (req, res) => {
-  res.status(201).json(await createBusiness(parseBusiness(req.body)));
+  const values = { ...parseBusiness(req.body), owner_id: await ownerIdFor(req.body) };
+  res.status(201).json(await createBusiness(values));
 });
 
 adminRoutes.put('/businesses/:id', async (req, res) => {
-  const values = parseBusiness(req.body);
+  const values = { ...parseBusiness(req.body), owner_id: await ownerIdFor(req.body) };
   const row = UUID.test(req.params.id) ? await updateBusiness(req.params.id, values) : null;
   if (!row) return res.status(404).json({ error: 'That business no longer exists.' });
   res.json(row);

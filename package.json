@@ -10,13 +10,15 @@
     "api": "node --env-file-if-exists=.env src/api/server.js",
     "api:dev": "node --watch --env-file-if-exists=.env src/api/server.js",
     "db:migrate": "node --env-file-if-exists=.env src/shared/db/migrate.js",
-    "db:seed": "node --env-file-if-exists=.env src/shared/db/seed.js"
+    "db:seed": "node --env-file-if-exists=.env src/shared/db/seed.js",
+    "db:auth-sql": "node --env-file-if-exists=.env src/api/auth-sql.js"
   },
   "engines": {
     "node": ">=20.12"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
+    "better-auth": "^1.7.18",
     "express": "^5.3.0",
     "pg": "^8.23.1",
     "twilio": "^6.2.0",

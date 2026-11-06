@@ -77,13 +77,17 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | File | What it does |
 |---|---|
 | `server.js` | The API server; mounts each app's routes under `/api` |
-| `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, and preview them |
+| `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, link their owners, and preview them |
+| `owner/routes.js` | `/api/owner/...`: the signed-in owner and their business |
+| `auth.js` | Owner sign-in with Better Auth (`/api/auth/...`): Google now, Microsoft and Apple later |
+| `auth-sql.js` | Prints the SQL Better Auth needs after an upgrade (`npm run db:auth-sql`) |
 
 **`src/shared/`: used by both**
 
 | File | What it does |
 |---|---|
 | `businesses.js` | Reads and writes businesses in the database |
+| `users.js` | Looks up people who have signed in (the table belongs to Better Auth) |
 | `prompt.js` | Builds the greeting and Claude's instructions from a business |
 | `languages.js` | The languages the receptionist can speak, with the greeting lines in each |
 | `db/pool.js` | Postgres connection pool |
@@ -142,14 +146,14 @@ Run the seed inside Docker with `docker compose exec app npm run db:seed`. Code 
 
 ### Businesses
 
-The easiest way to add and edit businesses is the admin site, the React app in `web/`. It needs the API running too, so use two terminals:
+The easiest way to add and edit businesses is the admin site, part of the React app in `web/`. It needs the API running too, so use two terminals:
 ```bash
 npm run api:dev                 # API on :3001 (restarts on code changes)
-cd web && npm run dev           # admin site on http://localhost:5173
+cd web && npm run dev           # admin site on http://localhost:5173/admin
 ```
-(The first time, run `npm install` in `web/`.) In Docker, `docker compose up --build` serves the built site at http://localhost:3001 instead.
+(The first time, run `npm install` in `web/`.) In Docker, `docker compose up --build` serves the built site at http://localhost:3001/admin instead.
 
-The site lists every business and edits all of its settings. **Preview** shows the greeting and Claude's instructions for what's in the form, before saving. It only accepts connections from this computer, and the ngrok tunnel doesn't expose it. Set `ADMIN_PASSWORD` in `.env` to also require a password.
+The site lists every business and edits all of its settings, including its owner (see below). **Preview** shows the greeting and Claude's instructions for what's in the form, before saving. It only accepts connections from this computer, and the ngrok tunnel doesn't expose it. Set `ADMIN_PASSWORD` in `.env` to also require a password.
 
 Each row in the `businesses` table is one business. See `db/migrations/001_create_businesses.sql` for every column. The main ones:
 
@@ -162,11 +166,29 @@ Each row in the `businesses` table is one business. See `db/migrations/001_creat
 | `urgent_when` | When a message is marked urgent |
 | `active` | `false` stops calls reaching it |
 
+| `owner_id` | The owner who manages it in the owner app |
+
 To look at or change businesses directly:
 ```bash
 docker compose exec db psql -U receptionist -c "SELECT name, twilio_number, languages, features FROM businesses"
 ```
 Changes apply from the next call. No restart is needed.
+
+### Owner app
+
+Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. For now they see their receptionist's status, number and languages. Setup, call history and billing come next.
+
+A business shows up for an owner once it's linked to them: the owner signs in once, then you enter their Google email in the business's **Owner's email** field in the admin site.
+
+**Setting up Google sign-in** (once):
+1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or pick one), then go to **APIs & Services → OAuth consent screen** and set it up: app name, support email, and **External** users. While the app is in **Testing**, only the test users you add there can sign in.
+2. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**.
+3. Under **Authorized redirect URIs**, add `http://localhost:5173/api/auth/callback/google`, and `http://localhost:3001/api/auth/callback/google` for Docker.
+4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`, and restart the API.
+
+When the app goes online, add its real address as another redirect URI and set `BETTER_AUTH_URL` to it.
+
+Owners stay signed in for 7 days. Signing in is protected by Better Auth's rate limits, and sign-ins can only return to this app, never to another site.
 
 ## Configuration (`.env`)
 
@@ -188,6 +210,9 @@ Changes apply from the next call. No restart is needed.
 | `API_PORT` | no | API port when running outside Docker. Defaults to `3001` |
 | `WEB_PORT` | no | Admin site port in Docker. Defaults to `3001` |
 | `ADMIN_PASSWORD` | no | Password for the admin site. Without it, anyone on this computer can open it |
+| `BETTER_AUTH_URL` | yes | The address owners open the web app on (`http://localhost:5173` in development; Docker sets its own) |
+| `BETTER_AUTH_SECRET` | yes | Signs owners' session cookies. Make one with `openssl rand -base64 32`. Changing it signs everyone out |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google sign-in keys (see Owner app above). Without them nobody can sign in |
 | `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |
 | `ECHO` | no | `true` plays the caller's own voice back, to test the audio stream without the AI services |
 | `RECORD_CALLS` | no | `true` has Twilio record calls, for checking audio quality. Recordings are billed by Twilio |

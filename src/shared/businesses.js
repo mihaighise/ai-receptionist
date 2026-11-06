@@ -1,6 +1,6 @@
 // Reads and writes businesses in the database. The phone server only reads them, as the object
 // the rest of the code uses (the business details, the languages it speaks and the actions turned
-// on for it); the API (src/api) also creates, edits and deletes them.
+// on for it); the API (src/api) also creates, edits and deletes them, and finds an owner's business.
 
 import { pool } from './db/pool.js';
 
@@ -14,8 +14,11 @@ export const FEATURES = {
 // The columns the admin site can set.
 const EDITABLE_COLUMNS = [
   'slug', 'name', 'description', 'address', 'hours', 'phone', 'faq', 'twilio_number',
-  'languages', 'features', 'transfer_number', 'notify_sms', 'notify_whatsapp', 'urgent_when', 'active',
+  'languages', 'features', 'transfer_number', 'notify_sms', 'notify_whatsapp', 'urgent_when', 'active', 'owner_id',
 ];
+
+// Business rows with their owner's email (owner_email), which the admin site shows instead of the ID.
+const ROWS_WITH_OWNER = `SELECT b.*, u.email AS owner_email FROM businesses b LEFT JOIN "user" u ON u.id = b.owner_id`;
 
 // Database row -> business. An action that is turned off, or is missing the number it needs,
 // comes out empty, so the receptionist is never offered a tool that can't work.
@@ -52,11 +55,22 @@ export async function findBusinessById(id) {
   return rows[0] ? toBusiness(rows[0]) : null;
 }
 
-// --- Admin site: raw rows, including inactive businesses ---
+// --- API: raw rows, including inactive businesses ---
 
 export async function listBusinessRows() {
-  const { rows } = await pool.query('SELECT * FROM businesses ORDER BY name');
+  const { rows } = await pool.query(`${ROWS_WITH_OWNER} ORDER BY b.name`);
   return rows;
+}
+
+export async function getBusinessRow(id) {
+  const { rows } = await pool.query(`${ROWS_WITH_OWNER} WHERE b.id = $1`, [id]);
+  return rows[0] ?? null;
+}
+
+// The business this user owns, or null. (One business per owner for now.)
+export async function findBusinessRowByOwner(userId) {
+  const { rows } = await pool.query(`${ROWS_WITH_OWNER} WHERE b.owner_id = $1 ORDER BY b.created_at LIMIT 1`, [userId]);
+  return rows[0] ?? null;
 }
 
 // values: { column: value } for the EDITABLE_COLUMNS. Returns the new row.
@@ -64,10 +78,10 @@ export async function createBusiness(values) {
   const columns = EDITABLE_COLUMNS.filter((c) => c in values);
   const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
   const { rows } = await pool.query(
-    `INSERT INTO businesses (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+    `INSERT INTO businesses (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`,
     columns.map((c) => values[c]),
   );
-  return rows[0];
+  return getBusinessRow(rows[0].id);
 }
 
 // Returns the updated row, or null if there's no business with this ID.
@@ -75,10 +89,10 @@ export async function updateBusiness(id, values) {
   const columns = EDITABLE_COLUMNS.filter((c) => c in values);
   const sets = columns.map((c, i) => `${c} = $${i + 2}`).join(', ');
   const { rows } = await pool.query(
-    `UPDATE businesses SET ${sets} WHERE id = $1 RETURNING *`,
+    `UPDATE businesses SET ${sets} WHERE id = $1 RETURNING id`,
     [id, ...columns.map((c) => values[c])],
   );
-  return rows[0] ?? null;
+  return rows[0] ? getBusinessRow(id) : null;
 }
 
 // Returns true if a business was deleted.
