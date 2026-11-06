@@ -22,11 +22,14 @@ export interface Business {
   notify_whatsapp: string | null;
   urgent_when: string;
   active: boolean;
+  owner_id: string | null;
+  // The email of the owner's account, for showing and editing who owns it.
+  owner_email: string | null;
   created_at: string;
 }
 
-// What the API accepts when creating or saving a business.
-export type BusinessInput = Omit<Business, 'id' | 'created_at'>;
+// What the API accepts when creating or saving a business. The owner is given by email.
+export type BusinessInput = Omit<Business, 'id' | 'created_at' | 'owner_id' | 'owner_email'> & { owner_email: string };
 
 export interface Options {
   languages: { code: string; name: string }[];

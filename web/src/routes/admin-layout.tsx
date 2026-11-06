@@ -3,10 +3,11 @@ import { Phone } from 'lucide-react';
 import { BusinessList } from '@/features/businesses/business-list';
 import { cn } from '@/lib/utils';
 
-// Header, the business list on the left and the current page on the right. On a phone there's
-// room for only one, so the list shows on the home page and the business on its own page.
-export function RootLayout() {
-  const isHome = useLocation({ select: (location) => location.pathname === '/' });
+// The admin site (/admin): header, the business list on the left and the current page on the
+// right. On a phone there's room for only one, so the list shows on the admin home page and each
+// business on its own page.
+export function AdminLayout() {
+  const isHome = useLocation({ select: (location) => location.pathname.replace(/\/$/, '') === '/admin' });
 
   return (
     <div className="min-h-dvh">

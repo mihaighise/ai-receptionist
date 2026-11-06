@@ -1,18 +1,56 @@
-// The pages of the admin site and their addresses:
-//   /                          the business list (and, on wide screens, an empty editor)
-//   /businesses/new            add a business
-//   /businesses/:businessId    edit a business
+// The pages and their addresses. One app holds both sites:
+//   /                                the owner app (signed-in owners only)
+//   /sign-in                         owner sign-in
+//   /admin                           the admin site: the business list
+//   /admin/businesses/new            add a business
+//   /admin/businesses/:businessId    edit a business
+// The admin site is protected by the API, which only answers admin requests from this computer.
 
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
-import { EditBusinessPage, HomePage, NewBusinessPage } from './routes/business-pages';
-import { RootLayout } from './routes/root-layout';
+import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
+import { DashboardPage } from './features/owner/dashboard-page';
+import { OwnerLayout } from './features/owner/owner-layout';
+import { SignInPage } from './features/owner/sign-in-page';
+import { authClient } from './lib/auth-client';
+import { AdminLayout } from './routes/admin-layout';
+import { EditBusinessPage, HomePage, NewBusinessPage } from './routes/admin-pages';
 
-const rootRoute = createRootRoute({ component: RootLayout });
+const isSignedIn = async () => Boolean((await authClient.getSession()).data);
+
+const rootRoute = createRootRoute({ component: Outlet });
+
+// Owner app. Everything inside needs a signed-in owner; anyone else goes to the sign-in page.
+const ownerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'owner',
+  component: OwnerLayout,
+  beforeLoad: async () => {
+    if (!(await isSignedIn())) throw redirect({ to: '/sign-in' });
+  },
+});
+
+const signInRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sign-in',
+  component: SignInPage,
+  // Better Auth sends people back here with ?error=<code> when signing in fails.
+  validateSearch: (search: Record<string, unknown>) => ({
+    error: typeof search.error === 'string' ? search.error : undefined,
+  }),
+  beforeLoad: async () => {
+    if (await isSignedIn()) throw redirect({ to: '/' });
+  },
+});
+
+const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminLayout });
 
 const routeTree = rootRoute.addChildren([
-  createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/businesses/new', component: NewBusinessPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/businesses/$businessId', component: EditBusinessPage }),
+  ownerRoute.addChildren([createRoute({ getParentRoute: () => ownerRoute, path: '/', component: DashboardPage })]),
+  signInRoute,
+  adminRoute.addChildren([
+    createRoute({ getParentRoute: () => adminRoute, path: '/', component: HomePage }),
+    createRoute({ getParentRoute: () => adminRoute, path: '/businesses/new', component: NewBusinessPage }),
+    createRoute({ getParentRoute: () => adminRoute, path: '/businesses/$businessId', component: EditBusinessPage }),
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

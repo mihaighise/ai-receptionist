@@ -11,7 +11,8 @@ export default defineConfig({
   server: {
     port: 5173,
     // The API (npm run api in the repo root) answers /api; the browser only talks to Vite.
-    proxy: { '/api': process.env.API_URL ?? 'http://localhost:3001' },
+    // xfwd passes on the visitor's address (X-Forwarded-For), for the API's rate limits.
+    proxy: { '/api': { target: process.env.API_URL ?? 'http://localhost:3001', xfwd: true } },
   },
   test: {
     environment: 'jsdom',
