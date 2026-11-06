@@ -60,3 +60,20 @@ test('the landing page fits a phone', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expectNoSidewaysScroll(page);
 });
+
+test('the "O" icon is linked and served as images', async ({ page, request }) => {
+  await page.goto('/welcome');
+  const icons = await page
+    .locator('link[rel="icon"], link[rel="apple-touch-icon"]')
+    .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(icons).toEqual(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png']);
+  for (const [href, type] of [
+    ['/favicon.svg', 'image/svg+xml'],
+    ['/favicon.ico', 'image/x-icon'],
+    ['/apple-touch-icon.png', 'image/png'],
+  ]) {
+    const res = await request.get(href);
+    expect(res.ok(), href).toBe(true);
+    expect(res.headers()['content-type'], href).toContain(type.split('/')[0]);
+  }
+});
