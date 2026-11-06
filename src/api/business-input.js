@@ -4,6 +4,8 @@
 // at the field to fix.
 
 import { FEATURES, toBusiness } from '../shared/businesses.js';
+import { BUSINESS_TYPES, DEFAULT_BUSINESS_TYPE } from '../shared/business-types.js';
+import { SKILLS } from '../skills/index.js';
 import { LANGUAGES } from '../shared/languages.js';
 import { buildGreeting, buildSystemPrompt } from '../shared/prompt.js';
 
@@ -23,41 +25,49 @@ export class InputError extends Error {
   }
 }
 
-// The languages and features to choose from, for the forms.
+// The languages, skills ("features") and business types to choose from, for the forms.
 export const options = {
   languages: Object.entries(LANGUAGES).map(([code, name]) => ({ code, name })),
   features: Object.entries(FEATURES).map(([code, label]) => ({ code, label })),
+  businessTypes: Object.entries(BUSINESS_TYPES).map(([code, type]) => ({ code, ...type })),
 };
+
+// How each kind of skill setting is read from a request body.
+const READ_SETTING = { phone: phoneNumber, text };
+// Every skill's settings: { column: kind }.
+const SKILL_SETTINGS = Object.assign({}, ...SKILLS.map((skill) => skill.settings));
 
 // The settings an owner sets for their own business: what the receptionist knows and does.
 function readSettings(body) {
   return {
     name: text(body.name),
     description: text(body.description),
+    business_type: text(body.business_type) in BUSINESS_TYPES ? text(body.business_type) : DEFAULT_BUSINESS_TYPE,
     address: text(body.address),
     hours: text(body.hours),
     phone: text(body.phone),
     faq: (Array.isArray(body.faq) ? body.faq : []).map(text).filter(Boolean),
     languages: codes(body.languages, LANGUAGES),
     features: codes(body.features, FEATURES),
-    transfer_number: phoneNumber(body.transfer_number),
-    notify_sms: phoneNumber(body.notify_sms),
-    notify_whatsapp: phoneNumber(body.notify_whatsapp),
-    urgent_when: text(body.urgent_when),
+    ...Object.fromEntries(Object.entries(SKILL_SETTINGS).map(([column, kind]) => [column, READ_SETTING[kind](body[column])])),
   };
 }
 
-// values -> { column: message } for each invalid one.
-function settingsErrors(values) {
+// values -> { column: message } for each invalid one. Each skill that's on checks its own
+// settings (owner: the owner app is saving, rather than the admin site).
+function settingsErrors(values, { owner = false } = {}) {
   const fields = {};
   if (!values.name) fields.name = 'Enter the business name.';
   if (!values.description) fields.description = 'Describe the business in a few words.';
   if (values.languages.length === 0) fields.languages = 'Pick at least one language.';
-  for (const column of ['twilio_number', 'transfer_number', 'notify_sms', 'notify_whatsapp']) {
+  const phones = ['twilio_number', ...Object.keys(SKILL_SETTINGS).filter((column) => SKILL_SETTINGS[column] === 'phone')];
+  for (const column of phones) {
     if (values[column] && !E164.test(values[column])) fields[column] = 'Use international format, e.g. +18005550100.';
   }
-  if (values.features.includes('transfers') && !values.transfer_number && !fields.transfer_number) {
-    fields.transfer_number = 'Transfers need a number to transfer callers to.';
+  for (const skill of SKILLS) {
+    if (!values.features.includes(skill.id)) continue;
+    // A badly written number already has its message; the skill's own check comes second.
+    for (const [column, message] of Object.entries(skill.validate(values, { owner }))) fields[column] ??= message;
   }
   return fields;
 }
@@ -66,15 +76,10 @@ function throwIfAny(fields) {
   if (Object.keys(fields).length) throw new InputError(fields);
 }
 
-// Owner app request body -> column values an owner may set. Owners can't read messages anywhere
-// else yet, so taking messages needs a number to send them to.
+// Owner app request body -> column values an owner may set.
 export function parseSettings(body) {
   const values = readSettings(body);
-  const fields = settingsErrors(values);
-  if (values.features.includes('messages') && !values.notify_sms && !values.notify_whatsapp && !fields.notify_sms) {
-    fields.notify_sms = 'Enter a number to send messages to, by SMS or WhatsApp.';
-  }
-  throwIfAny(fields);
+  throwIfAny(settingsErrors(values, { owner: true }));
   return values;
 }
 

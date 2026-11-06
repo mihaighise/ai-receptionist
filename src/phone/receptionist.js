@@ -9,106 +9,30 @@
 //      history and ask Claude again, so it can tell the caller what happened.
 // The Claude API is stateless: the full conversation is sent with every request.
 //
-// Messages are drafts until the call ends: the caller can still change or cancel their request,
-// so only the final version is saved and sent to the owner, once per call (see close()).
+// The tools come from the business's skills (src/skills): each skill offers its own, runs them,
+// and is told when the call ends (e.g. the messages skill only sends the final message then).
 
 import Anthropic from '@anthropic-ai/sdk';
-import { appendFile, mkdir } from 'node:fs/promises';
 import { LANGUAGES } from '../shared/languages.js';
 import { buildSystemPrompt } from '../shared/prompt.js';
-import { getTwilioClient } from '../shared/twilio.js';
+import { liveSkills } from '../skills/index.js';
 
 // Reads ANTHROPIC_API_KEY from the environment.
 const client = new Anthropic();
 const MODEL = process.env.CLAUDE_MODEL ?? 'claude-sonnet-5-5';
-// One JSON object per line ("JSON Lines"), so new messages are simply appended.
-const MESSAGES_FILE = new URL('../../data/messages.jsonl', import.meta.url);
-
-// Only offer Claude the tools this business has turned on (see businesses.js).
-// Each tool has a name, a description (Claude reads it to decide when to use the tool) and
-// an input schema (the fields Claude must fill in). Claude never runs anything itself: it asks
-// for a tool, and #runTool below does the actual work.
-function buildTools({ actions }) {
-  const tools = [];
-  if (actions.messages) {
-    tools.push(
-      {
-        name: 'take_message',
-        description: 'Save a message for the staff to follow up on: appointment requests, callbacks, or anything you cannot handle on the call. Read the details back to the caller before calling this. There is one message per call: calling this again replaces the earlier message, so always include every request the caller still wants, with any changes.',
-        // Stream tool input as it's generated instead of buffering it. The API then no longer
-        // validates the input for us, so #runTool checks the fields itself.
-        eager_input_streaming: true,
-        input_schema: {
-          type: 'object',
-          properties: {
-            caller_name: { type: 'string', description: "The caller's name" },
-            callback_number: { type: 'string', description: 'Best number to call the caller back on' },
-            message: { type: 'string', description: 'What the caller needs, with any dates, times or addresses they mentioned' },
-            urgent: { type: 'boolean', description: 'True if the staff should act on this right away' },
-          },
-          required: ['caller_name', 'callback_number', 'message', 'urgent'],
-        },
-      },
-      {
-        name: 'cancel_message',
-        description: 'Delete the message saved earlier in this call, when the caller no longer wants it. Nothing is sent to the staff.',
-        eager_input_streaming: true,
-        input_schema: { type: 'object', properties: {}, required: [] },
-      },
-    );
-  }
-  tools.push({
-    name: 'end_call',
-    description: 'Hang up after the caller is done and you have said goodbye.',
-    eager_input_streaming: true,
-    input_schema: { type: 'object', properties: {}, required: [] },
-  });
-  // Don't offer a tool that can't work: with no transfer number, Claude isn't told transfers exist.
-  if (actions.transfer.number) {
-    tools.push({
-      name: 'transfer_call',
-      description: 'Transfer the caller to a member of staff, when they ask for a person or the request needs one right away.',
+// The tools offered to Claude: each skill's on this call (see src/skills), then end_call, which
+// every receptionist has. Claude never runs anything itself: it asks for a tool, and #runTool
+// below has it done.
+function buildTools(business) {
+  return [
+    ...liveSkills(business).flatMap((skill) => skill.tools(business)),
+    {
+      name: 'end_call',
+      description: 'Hang up after the caller is done and you have said goodbye.',
       eager_input_streaming: true,
-      input_schema: {
-        type: 'object',
-        properties: { reason: { type: 'string', description: 'Why the caller is being transferred' } },
-        required: ['reason'],
-      },
-    });
-  }
-  return tools;
-}
-
-// Send a saved message to the business owner on each of the business's channels.
-// Failures are logged; the message is still in the file.
-async function notifyOwner(entry, smsFrom, { sms, whatsapp }) {
-  const body = [
-    `${entry.urgent ? 'URGENT ' : ''}New message from ${entry.caller_name} (${entry.callback_number}):`,
-    entry.message,
-  ].join('\n');
-
-  // [channel name, Twilio message parameters] for each channel that's turned on.
-  const sends = [];
-  // SMS goes out from the Twilio number the customer called.
-  if (sms) sends.push(['SMS', { to: sms, from: smsFrom }]);
-  if (whatsapp) {
-    // Defaults to the Twilio WhatsApp Sandbox number, for testing.
-    // Twilio uses the same messages API for WhatsApp; the "whatsapp:" prefix picks the channel.
-    const from = process.env.TWILIO_WHATSAPP_FROM ?? '+14155238886';
-    sends.push(['WhatsApp', { to: `whatsapp:${whatsapp}`, from: `whatsapp:${from}` }]);
-  }
-
-  // Send on all channels at once; one failing doesn't stop the others.
-  await Promise.all(
-    sends.map(async ([channel, params]) => {
-      try {
-        await getTwilioClient().messages.create({ ...params, body });
-        console.log(`Sent message to the owner by ${channel}`);
-      } catch (err) {
-        console.error(`Could not send ${channel} to the owner (Twilio error ${err.code}): ${err.message}`);
-      }
-    }),
-  );
+      input_schema: { type: 'object', properties: {}, required: [] },
+    },
+  ];
 }
 
 // Index just past the last sentence end in text, or 0 if there isn't one yet.
@@ -119,10 +43,8 @@ function sentenceEnd(text) {
   return end;
 }
 
-// Names of the fields that are missing or empty strings in a tool's input.
-function missingFields(input, fields) {
-  return fields.filter((f) => typeof input?.[f] !== 'string' || !input[f].trim());
-}
+// For tests: the tools offered to Claude for a business.
+export { buildTools as toolsFor };
 
 export class Receptionist {
   // The conversation so far, in Claude API format: alternating "user" (caller words, tool results)
@@ -143,12 +65,10 @@ export class Receptionist {
   #ended = false;
   // The language of the current turn ('en' or 'es'); replies are spoken in it.
   #language = 'en';
-  // The message taken on this call, not yet saved or sent; replaced or cleared if the caller changes their mind.
-  #draft = null;
-  // Set once close() has run; the call is over and the draft has been handled.
+  // Each skill's part in this call (see src/skills): runs its tools, and is closed when the call ends.
+  #skills;
+  // Set once close() has run.
   #closed = false;
-  // Set once the caller was put through to a person.
-  #transferred = false;
 
   // business: the business that was called (businesses.js)
   // speech: { begin() -> { say(text), end() } }  plays a reply on the call
@@ -163,23 +83,19 @@ export class Receptionist {
     // Built once per call; it includes this caller's number.
     this.#system = buildSystemPrompt(business, { callerNumber: call.from });
     this.#tools = buildTools(business);
+    this.#skills = liveSkills(business).map((skill) =>
+      skill.startCall({ business, call, endConversation: () => (this.#ended = true) }),
+    );
   }
 
   get busy() {
     return this.#stream !== null;
   }
 
-  // What happened on the call, for its call history: whether the caller was transferred, and the
-  // message taken ({ caller_name, callback_number, message, urgent }), once the call is over.
+  // What happened on the call, for its call history (e.g. transferred, and the message taken),
+  // from each skill, once the call is over.
   get outcome() {
-    const draft = this.#closed ? this.#draft : null;
-    const message = draft && {
-      caller_name: draft.caller_name,
-      callback_number: draft.callback_number,
-      message: draft.message,
-      urgent: draft.urgent,
-    };
-    return { transferred: this.#transferred, message };
+    return Object.assign({ transferred: false, message: null }, ...this.#skills.map((skill) => skill.outcome()));
   }
 
   // The caller finished a turn. Any reply still in progress is cancelled first.
@@ -201,27 +117,14 @@ export class Receptionist {
   }
 
   // The call is over (hung up, transferred or ended by us): stop the current reply, ignore any
-  // later turns, and save and send the final version of the message, if there is one.
+  // later turns, and tell each skill (the messages skill then sends the final message).
   // Can be called more than once; only the first call does anything.
   close() {
     if (this.#closed) return;
     this.#closed = true;
     this.#ended = true;
     this.cancel();
-    if (this.#draft) this.#sendMessage(this.#draft);
-  }
-
-  // Save the message to the file, then send it to the owner. Save first, so the message is kept
-  // even if sending it fails.
-  async #sendMessage(entry) {
-    try {
-      await mkdir(new URL('.', MESSAGES_FILE), { recursive: true });
-      await appendFile(MESSAGES_FILE, JSON.stringify(entry) + '\n');
-      console.log('Message saved');
-    } catch (err) {
-      console.error('Could not save the message:', err.message);
-    }
-    await notifyOwner(entry, this.call.to, this.business.actions.notify);
+    for (const skill of this.#skills) skill.close();
   }
 
   // Handles one caller turn: ask Claude, run any tools it asks for, and repeat until Claude
@@ -352,53 +255,18 @@ export class Receptionist {
     });
     console.log(`Tool ${block.name}`, block.input);
 
-    switch (block.name) {
-      case 'take_message': {
-        const missing = missingFields(block.input, ['caller_name', 'callback_number', 'message']);
-        if (missing.length) return result(`Missing fields: ${missing.join(', ')}`, true);
-        // Kept as a draft until the call ends, replacing any earlier one (see close()).
-        const updated = this.#draft !== null;
-        this.#draft = {
-          time: new Date().toISOString(),
-          callSid: this.call.callSid,
-          from: this.call.from,
-          ...block.input,
-          urgent: block.input.urgent === true,
-        };
-        console.log(updated ? 'Message updated (sent when the call ends)' : 'Message taken (sent when the call ends)');
-        return result(
-          updated
-            ? 'Message updated. Tell the caller the change has been noted.'
-            : 'Message saved. Tell the caller the team will get back to them.',
-        );
-      }
-
-      case 'cancel_message':
-        if (!this.#draft) return result('There is no message to cancel.', true);
-        this.#draft = null;
-        console.log('Message cancelled');
-        return result('Message deleted; nothing will be sent. Tell the caller it has been cancelled.');
-
-      case 'transfer_call':
-        if (!this.business.actions.transfer.number) {
-          return result('Transfers are not available right now. Offer to take a message instead.', true);
-        }
-        // Let the caller hear "One moment, I'll put you through" before the line changes.
-        await this.call.waitForPlayback();
-        this.#ended = true;
-        this.#transferred = true;
-        await this.call.transfer();
-        return result('Call transferred.');
-
-      case 'end_call':
-        // Let the goodbye finish playing before hanging up.
-        await this.call.waitForPlayback();
-        this.#ended = true;
-        await this.call.hangup();
-        return result('Call ended.');
-
-      default:
-        return result(`Unknown tool ${block.name}. Available tools: ${this.#tools.map((t) => t.name).join(', ')}.`, true);
+    if (block.name === 'end_call') {
+      // Let the goodbye finish playing before hanging up.
+      await this.call.waitForPlayback();
+      this.#ended = true;
+      await this.call.hangup();
+      return result('Call ended.');
     }
+    // The skill that offers this tool runs it.
+    for (const skill of this.#skills) {
+      const handled = await skill.run(block, result);
+      if (handled) return handled;
+    }
+    return result(`Unknown tool ${block.name}. Available tools: ${this.#tools.map((t) => t.name).join(', ')}.`, true);
   }
 }

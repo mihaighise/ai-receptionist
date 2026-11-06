@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useBlocker, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight, Check, Loader2, Pencil } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Pencil, Plus } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, type UseFormReturn, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { skillUi } from '@/features/skills';
 import { APP_NAME } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 import { MenuPhotos } from './menu-photos';
@@ -32,6 +33,63 @@ import {
 } from './setup-schema';
 
 type Form = UseFormReturn<SetupValues>;
+
+// The template of the business type picked in the first step, or the "other" one.
+function useBusinessType(form: Form, options: Options) {
+  const code = useWatch({ control: form.control, name: 'business_type' });
+  return (
+    options.businessTypes.find((type) => type.code === code) ??
+    options.businessTypes.find((type) => type.code === 'other') ??
+    options.businessTypes[0]
+  );
+}
+
+// "What kind of business is it?": one card per type. In a new setup, picking one switches on its
+// skills; editing keeps what the owner already chose.
+function BusinessTypePicker({ form, options, isNew }: { form: Form; options: Options; isNew: boolean }) {
+  const { control, setValue, formState } = form;
+  return (
+    <Controller
+      control={control}
+      name="business_type"
+      render={({ field }) => (
+        <fieldset className="min-w-0 sm:col-span-2">
+          <legend className="mb-2 font-medium text-sm">What kind of business is it?</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {options.businessTypes.map((type) => (
+              <label
+                key={type.code}
+                className={cn(
+                  'flex cursor-pointer flex-col rounded-lg border p-3 transition-colors hover:border-primary/50 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50',
+                  field.value === type.code && 'border-primary bg-accent/40 ring-1 ring-primary hover:border-primary',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="business_type"
+                  value={type.code}
+                  checked={field.value === type.code}
+                  onChange={() => {
+                    field.onChange(type.code);
+                    if (isNew) setValue('features', type.skills, { shouldDirty: true });
+                  }}
+                  className="sr-only"
+                />
+                <span className="font-medium text-sm">{type.label}</span>
+                <span className="text-muted-foreground text-xs">{type.examples}</span>
+              </label>
+            ))}
+          </div>
+          {formState.errors.business_type && (
+            <p role="alert" className="mt-1.5 text-destructive text-xs">
+              {formState.errors.business_type.message}
+            </p>
+          )}
+        </fieldset>
+      )}
+    />
+  );
+}
 
 // The step list at the top. Steps already reached can be clicked to go back to them.
 function Stepper({ step, reached, onSelect }: { step: number; reached: number; onSelect: (index: number) => void }) {
@@ -74,13 +132,15 @@ function Stepper({ step, reached, onSelect }: { step: number; reached: number; o
   );
 }
 
-function BusinessStep({ form }: { form: Form }) {
+function BusinessStep({ form, options, isNew }: { form: Form; options: Options; isNew: boolean }) {
   const {
     register,
     formState: { errors },
   } = form;
+  const type = useBusinessType(form, options);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      <BusinessTypePicker form={form} options={options} isNew={isNew} />
       <FormField label="Business name" htmlFor="name" className="sm:col-span-2" error={errors.name?.message}>
         <Input id="name" autoComplete="organization" aria-invalid={!!errors.name} {...register('name')} />
       </FormField>
@@ -94,7 +154,7 @@ function BusinessStep({ form }: { form: Form }) {
         <Textarea
           id="description"
           rows={2}
-          placeholder="a family-owned plumbing company in Austin, fixing leaks, drains and water heaters"
+          placeholder={type?.placeholders.description}
           aria-invalid={!!errors.description}
           {...register('description')}
         />
@@ -106,7 +166,7 @@ function BusinessStep({ form }: { form: Form }) {
         <Input id="phone" inputMode="tel" autoComplete="tel" placeholder="+1 512 555 0100" {...register('phone')} />
       </FormField>
       <FormField label="Opening hours" htmlFor="hours" className="sm:col-span-2">
-        <Input id="hours" placeholder="Weekdays 8am to 6pm" {...register('hours')} />
+        <Input id="hours" placeholder={type?.placeholders.hours} {...register('hours')} />
       </FormField>
     </div>
   );
@@ -177,12 +237,9 @@ function LanguagesStep({ form, options }: { form: Form; options: Options }) {
 }
 
 function ActionsStep({ form, options }: { form: Form; options: Options }) {
-  const {
-    register,
-    control,
-    formState: { errors },
-  } = form;
+  const { control } = form;
   const features = useWatch({ control, name: 'features' });
+  const type = useBusinessType(form, options);
   return (
     <div className="flex flex-col gap-6">
       <p className="text-muted-foreground text-sm">
@@ -199,64 +256,55 @@ function ActionsStep({ form, options }: { form: Form; options: Options }) {
           />
         )}
       />
-      {features.includes('messages') && (
-        <fieldset className="grid min-w-0 gap-4 rounded-lg border p-4 sm:grid-cols-2">
-          <legend className="px-1 font-medium text-sm">Messages</legend>
-          <p className="text-muted-foreground text-sm sm:col-span-2">
-            When a caller wants to book, needs a callback or asks for something it can't answer, the receptionist takes
-            a message and sends it to you as soon as the call ends.
-          </p>
-          <FormField label="Text messages to" htmlFor="notify_sms" error={errors.notify_sms?.message}>
-            <Input
-              id="notify_sms"
-              inputMode="tel"
-              placeholder="+15125550100"
-              aria-invalid={!!errors.notify_sms}
-              {...register('notify_sms')}
-            />
-          </FormField>
-          <FormField label="WhatsApp messages to" htmlFor="notify_whatsapp" error={errors.notify_whatsapp?.message}>
-            <Input
-              id="notify_whatsapp"
-              inputMode="tel"
-              placeholder="+15125550100"
-              aria-invalid={!!errors.notify_whatsapp}
-              {...register('notify_whatsapp')}
-            />
-          </FormField>
-          <FormField
-            label="Mark a message urgent if…"
-            htmlFor="urgent_when"
-            className="sm:col-span-2"
-            hint="Optional. Urgent messages are flagged so you see them first."
-          >
-            <Input id="urgent_when" placeholder="there is a burst pipe or flooding" {...register('urgent_when')} />
-          </FormField>
-        </fieldset>
-      )}
-      {features.includes('transfers') && (
-        <fieldset className="grid min-w-0 gap-4 rounded-lg border p-4 sm:grid-cols-2">
-          <legend className="px-1 font-medium text-sm">Transfers</legend>
-          <p className="text-muted-foreground text-sm sm:col-span-2">
-            When a caller asks for a person, or something urgent can't wait, the receptionist puts them through.
-          </p>
-          <FormField label="Transfer callers to" htmlFor="transfer_number" error={errors.transfer_number?.message}>
-            <Input
-              id="transfer_number"
-              inputMode="tel"
-              placeholder="+15125550100"
-              aria-invalid={!!errors.transfer_number}
-              {...register('transfer_number')}
-            />
-          </FormField>
-        </fieldset>
-      )}
+      {/* The settings of each skill that's switched on (src/features/skills). */}
+      {options.features
+        .filter((feature) => features.includes(feature.code))
+        .map((feature) => {
+          const { Settings } = skillUi(feature.code);
+          return Settings && <Settings key={feature.code} form={form} placeholders={type?.placeholders ?? {}} />;
+        })}
       <p className="text-muted-foreground text-xs">Use international format for numbers, e.g. +15125550100.</p>
     </div>
   );
 }
 
-function FaqStep({ form }: { form: Form }) {
+// The business type's starter common questions not yet in the list; tapping one adds it, for the
+// owner to fill in the ___ parts.
+function FaqIdeas({ form, options }: { form: Form; options: Options }) {
+  const type = useBusinessType(form, options);
+  const faq = useWatch({ control: form.control, name: 'faq' });
+  const ideas = (type?.faq ?? []).filter((line) => !faq.includes(line));
+  if (!ideas.length) return null;
+  const add = (line: string) => {
+    const current = form.getValues('faq').trimEnd();
+    form.setValue('faq', [current, line].filter(Boolean).join('\n'), { shouldDirty: true });
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-xs">
+        Ideas for {type.label.toLowerCase()}: tap one to add it, then fill in the ___ parts.
+      </p>
+      <ul className="flex flex-wrap gap-2" aria-label="Ideas">
+        {ideas.map((line) => (
+          <li key={line}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-auto py-1.5 text-left font-normal whitespace-normal"
+              onClick={() => add(line)}
+            >
+              <Plus /> {line}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function FaqStep({ form, options }: { form: Form; options: Options }) {
+  const type = useBusinessType(form, options);
   // Lines read from menu photos go after what's already written, for the owner to check.
   const addLines = useCallback(
     (lines: string[]) => {
@@ -276,11 +324,14 @@ function FaqStep({ form }: { form: Form }) {
           id="faq"
           rows={8}
           placeholder={
-            'We serve all of Austin and Round Rock.\nA standard call-out costs $89, waived if we do the repair.\nWe offer 24/7 emergency service for burst pipes and flooding.\nWe accept cards and cash, not checks.'
+            type?.faq.length
+              ? type.faq.slice(0, 4).join('\n')
+              : 'We offer free parking behind the building.\nWe accept cards and cash.'
           }
           {...form.register('faq')}
         />
       </FormField>
+      <FaqIdeas form={form} options={options} />
       <MenuPhotos onLines={addLines} />
     </div>
   );
@@ -334,6 +385,7 @@ function ReviewStep({
 
       <div>
         <Summary title="Your business" onEdit={() => onEdit('business')}>
+          <p>{options.businessTypes.find((type) => type.code === settings.business_type)?.label}</p>
           <p className="text-foreground">
             {settings.name}, {settings.description}
           </p>
@@ -346,22 +398,9 @@ function ReviewStep({
         </Summary>
         <Summary title="What it does" onEdit={() => onEdit('actions')}>
           <p>Answers questions about your business</p>
-          {settings.features.includes('messages') && (
-            <p>
-              {featureLabel('messages')}, sent to{' '}
-              {[
-                settings.notify_sms && `${settings.notify_sms} by text`,
-                settings.notify_whatsapp && `${settings.notify_whatsapp} on WhatsApp`,
-              ]
-                .filter(Boolean)
-                .join(' and ')}
-            </p>
-          )}
-          {settings.features.includes('transfers') && (
-            <p>
-              {featureLabel('transfers')} at {settings.transfer_number}
-            </p>
-          )}
+          {settings.features.map((code) => (
+            <p key={code}>{skillUi(code).summary(settings, featureLabel(code))}</p>
+          ))}
         </Summary>
         <Summary title="Common questions" onEdit={() => onEdit('faq')}>
           {settings.faq.length ? (
@@ -500,10 +539,10 @@ export function SetupWizard({ business }: { business: Business | null }) {
               <Skeleton className="h-40" />
             ) : (
               <>
-                {current.id === 'business' && <BusinessStep form={form} />}
+                {current.id === 'business' && <BusinessStep form={form} options={options} isNew={!business} />}
                 {current.id === 'languages' && <LanguagesStep form={form} options={options} />}
                 {current.id === 'actions' && <ActionsStep form={form} options={options} />}
-                {current.id === 'faq' && <FaqStep form={form} />}
+                {current.id === 'faq' && <FaqStep form={form} options={options} />}
                 {current.id === 'review' && (
                   <ReviewStep
                     form={form}

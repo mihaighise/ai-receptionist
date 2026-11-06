@@ -10,6 +10,8 @@ export interface Business {
   slug: string;
   name: string;
   description: string;
+  // The kind of business (src/shared/business-types.js), e.g. 'restaurant'.
+  business_type: string;
   address: string;
   hours: string;
   phone: string;
@@ -50,7 +52,22 @@ export type BusinessInput = Omit<
 
 export interface Options {
   languages: { code: string; name: string }[];
+  // The skills a business can switch on (src/skills).
   features: { code: string; label: string }[];
+  businessTypes: BusinessType[];
+}
+
+// A kind of business and its template (src/shared/business-types.js).
+export interface BusinessType {
+  code: string;
+  label: string;
+  examples: string;
+  // Skills switched on by default.
+  skills: string[];
+  // Example text for the setup's fields.
+  placeholders: { description: string; hours: string; urgent_when: string };
+  // Common questions to start from, with ___ for the owner to fill in.
+  faq: string[];
 }
 
 // The latest automatic Twilio number order for a business (src/api/phone-numbers.js).

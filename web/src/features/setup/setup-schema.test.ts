@@ -6,6 +6,7 @@ const business: Business = {
   slug: 'sunrise-dental',
   name: 'Sunrise Dental',
   description: 'a family dental clinic',
+  business_type: 'clinic',
   address: '123 Main Street',
   hours: 'Monday to Friday',
   phone: '+1 555 010 0000',
@@ -28,14 +29,21 @@ const business: Business = {
   created_at: '2026-11-05T00:00:00Z',
 };
 
-const filled = { ...emptySetup, name: 'Rapid Flow Plumbing', description: 'a plumber', notify_sms: '+15125550100' };
+const filled = {
+  ...emptySetup,
+  business_type: 'home_services',
+  name: 'Rapid Flow Plumbing',
+  description: 'a plumber',
+  notify_sms: '+15125550100',
+};
 const errorsFor = (values: object) =>
   setupSchema.safeParse(values).error?.issues.map((issue) => issue.path.join('.')) ?? [];
 
 test('the settings an owner can change survive the round trip through the wizard unchanged', () => {
-  const { name, description, address, hours, phone, faq, languages, features } = business;
+  const { business_type, name, description, address, hours, phone, faq, languages, features } = business;
   const { transfer_number, notify_sms, notify_whatsapp, urgent_when } = business;
   expect(toSettings(toSetupValues(business))).toEqual({
+    business_type,
     name,
     description,
     address,
@@ -68,4 +76,8 @@ test('transfers need a number to transfer to', () => {
 test('every field is asked for on some step', () => {
   for (const field of Object.keys(emptySetup)) expect(stepOfField(field)).toBeGreaterThanOrEqual(0);
   expect(STEPS.at(-1)?.id).toBe('review');
+});
+
+test('the kind of business must be picked', () => {
+  expect(errorsFor({ ...filled, business_type: '' })).toEqual(['business_type']);
 });

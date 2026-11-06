@@ -15,6 +15,7 @@ const env = (name) => process.env[name] || null;
 const BUSINESSES = [
   {
     slug: 'sunrise-dental',
+    business_type: 'clinic',
     name: 'Sunrise Dental',
     description: 'a family dental clinic offering checkups, cleanings, fillings, whitening and emergency appointments',
     address: '123 Main Street, Springfield',
@@ -35,6 +36,7 @@ const BUSINESSES = [
   },
   {
     slug: 'rapid-flow-plumbing',
+    business_type: 'home_services',
     name: 'Rapid Flow Plumbing',
     description: 'a family-owned plumbing company fixing leaks, clogged drains, water heaters and burst pipes',
     address: '48 Oak Avenue, Springfield',
@@ -56,6 +58,7 @@ const BUSINESSES = [
   },
   {
     slug: 'northside-heating-air',
+    business_type: 'home_services',
     name: 'Northside Heating & Air',
     description: 'a heating and air conditioning company that installs, repairs and services furnaces, AC units and heat pumps',
     address: '910 Industrial Parkway, Springfield',
@@ -77,6 +80,7 @@ const BUSINESSES = [
   },
   {
     slug: 'bella-hair-studio',
+    business_type: 'salon',
     name: 'Bella Hair Studio',
     description: 'a hair salon offering cuts, color, highlights, blowouts and bridal styling',
     address: '22 Elm Street, Springfield',

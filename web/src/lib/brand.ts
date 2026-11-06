@@ -1,2 +1,3 @@
-// The product name owners see. "Bivoz" is the working name (docs/phase-0-decisions.md).
-export const APP_NAME = 'Bivoz';
+// The product name owners see (docs/phase-0-decisions.md). The server has its own copy
+// (src/shared/brand.js).
+export const APP_NAME = 'Oriana Agent';

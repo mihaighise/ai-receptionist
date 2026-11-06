@@ -16,6 +16,8 @@ Object.assign(process.env, {
   // Where bought Twilio numbers would point. Numbers are only ever bought by a fake Twilio client.
   PUBLIC_URL: 'https://phone.test',
   TWILIO_BUY_NUMBERS: 'dry-run',
+  // Messages taken in tests are written here, not to data/messages.jsonl.
+  MESSAGES_FILE: `${process.env.TMPDIR ?? '/tmp'}/receptionist-test-messages.jsonl`,
   // Nothing listens here, so a request to Claude that a test didn't fake fails at once instead of
   // reaching the real API (tests fake Claude with test/support/fake-claude.js).
   ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',

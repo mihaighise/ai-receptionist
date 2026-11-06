@@ -4,6 +4,7 @@
 // Claude isn't trained on the business: buildSystemPrompt() writes its details into the
 // instructions, which are sent with every reply.
 
+import { liveSkills } from '../skills/index.js';
 import { LANGUAGES, SWITCH_OFFER, WELCOME } from './languages.js';
 
 // ['a'] -> 'a', ['a', 'b'] -> 'a and b', ['a', 'b', 'c'] -> 'a, b and c'
@@ -22,10 +23,14 @@ export function buildGreeting({ name, languages }) {
 }
 
 // Builds Claude's instructions for one call: who it is, the business facts, how to speak on
-// the phone, and what it's allowed to do. The tool rules here must match the tools offered
-// in receptionist.js, so both are driven by the same `actions` settings.
+// the phone, and what it's allowed to do. Each skill on the call (src/skills) adds its own lines,
+// the same skills whose tools receptionist.js offers.
 export function buildSystemPrompt(business, { callerNumber }) {
-  const { actions, languages } = business;
+  const { languages } = business;
+  const skills = liveSkills(business);
+  const lines = (part) => skills.flatMap((skill) => skill.prompt?.[part]?.(business) ?? []);
+  // Whether the receptionist can offer a callback (taking a message) instead of guessing.
+  const followUp = skills.some((skill) => skill.followUp);
   const greeting = buildGreeting(business).map((part) => part.text).join(' ');
   const names = languages.map((code) => LANGUAGES[code]);
   // The business details are written in English, so they're translated for the other languages.
@@ -34,28 +39,24 @@ export function buildSystemPrompt(business, { callerNumber }) {
   const languageRules = [
     `- You speak ${list(names, 'and')}. Each caller message starts with a tag such as ${list(names.map((n) => `[${n}]`), 'or')} that says which language to reply in. Always reply only in that language, and never say the tag.`,
     translated.length && `- The business details above are in English; translate them naturally when replying in ${list(translated, 'or')}.`,
-    actions.messages && '- Always write take_message fields in English, translating what the caller said, so the staff can read every message.',
+    ...lines('language'),
   ].filter(Boolean);
 
-  // One line per thing the receptionist can do; the lines depend on which actions are turned on.
-  const capabilities = actions.messages
-    ? [
-        '- Answer questions using only the business details above. If you don\'t know something, say so and offer to take a message rather than guessing.',
-        `- To book, change or cancel an appointment, or for anything you can't handle yourself, take a message with the take_message tool: get the caller's name, the best callback number (offer to use the number they're calling from) and what they need, then read the details back before saving.${actions.urgentWhen ? ` Mark it urgent if ${actions.urgentWhen}.` : ''}`,
-        "- There is one message per call, and the staff only receive it after the call ends. If the caller changes or adds to their request after you've saved it, read back the changes and call take_message again with the complete updated message. If they want to cancel it, use cancel_message.",
-      ]
-    : [
-        "- Answer questions using only the business details above. If you don't know something, say so rather than guessing.",
-        "- You can't book appointments or take messages. If the caller needs something you can't handle, suggest they call back during opening hours.",
-      ];
-  if (actions.transfer.number) {
-    capabilities.push('- If the caller asks for a person, or the matter is urgent and they want to speak to someone now, use transfer_call.');
-  } else if (actions.messages) {
-    capabilities.push('- No one is available to take calls right now; if the caller asks for a person, offer to take a message so the team can call them back.');
-  } else {
-    capabilities.push('- No one is available to take calls right now; if the caller asks for a person, suggest they call back during opening hours.');
-  }
-  capabilities.push("- When the caller is done and you've said goodbye, use end_call.");
+  // One line per thing the receptionist can do: answering, then each skill's lines, then what to
+  // do when a caller asks for a person (a skill's handoff, or the default), then hanging up.
+  const capabilities = [
+    followUp
+      ? "- Answer questions using only the business details above. If you don't know something, say so and offer to take a message rather than guessing."
+      : "- Answer questions using only the business details above. If you don't know something, say so rather than guessing.",
+    ...lines('capabilities'),
+    !followUp &&
+      "- You can't book appointments or take messages. If the caller needs something you can't handle, suggest they call back during opening hours.",
+    lines('handoff')[0] ??
+      (followUp
+        ? '- No one is available to take calls right now; if the caller asks for a person, offer to take a message so the team can call them back.'
+        : '- No one is available to take calls right now; if the caller asks for a person, suggest they call back during opening hours.'),
+    "- When the caller is done and you've said goodbye, use end_call.",
+  ].filter(Boolean);
 
   return `You are the phone receptionist for ${business.name}, ${business.description}. You are talking to a caller on a live phone call.
 

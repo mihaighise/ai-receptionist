@@ -15,7 +15,11 @@ Why them first:
 
 Next in line: **salons and barbers** (once calendar booking exists in Phase 5), then **auto repair shops**. Dental and medical clinics come later, once the HIPAA agreements are in place.
 
-## 2. Name: Bivoz
+## 2. Name: Oriana Agent (was Bivoz)
+
+**Renamed on 2026-11-06 to Oriana Agent.** The original working name, Bivoz, is below; it lives on only in internal identifiers (Stripe lookup keys and product IDs), so the rename didn't create duplicate products.
+
+### Original working name: Bivoz
 
 **Bivoz LLC**: "bi" (two languages) + "voz" (voice in Spanish). Short, easy to say on a call and to spell.
 

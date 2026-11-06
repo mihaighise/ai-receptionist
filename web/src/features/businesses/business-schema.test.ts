@@ -6,6 +6,7 @@ const business: Business = {
   slug: 'sunrise-dental',
   name: 'Sunrise Dental',
   description: 'a family dental clinic',
+  business_type: 'clinic',
   address: '123 Main Street',
   hours: 'Monday to Friday',
   phone: '+1 555 010 0000',

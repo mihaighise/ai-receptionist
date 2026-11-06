@@ -19,8 +19,9 @@ import { releaseDateFor } from './phone-numbers.js';
 // Pinned, so an SDK upgrade can't change what the API sends without us noticing.
 const API_VERSION = '2026-10-28.endive';
 // Tags our Checkout Sessions in the Stripe Dashboard.
-const INTEGRATION_IDENTIFIER = 'bivoz-owner-plans-qhvtmwzr';
-// Marks the Customer Portal configuration npm run stripe:setup creates.
+const INTEGRATION_IDENTIFIER = 'oriana-agent-owner-plans-qhvtmwzr';
+// Marks the Customer Portal configuration npm run stripe:setup creates (an internal ID: see
+// src/shared/brand.js).
 export const PORTAL_METADATA = { app: 'bivoz' };
 
 // The Stripe client for STRIPE_SECRET_KEY, or null when billing isn't set up.

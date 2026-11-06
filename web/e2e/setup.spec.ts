@@ -8,8 +8,9 @@ const next = (page: Page) => page.getByRole('button', { name: 'Next' }).click();
 const businessesOf = async (ownerId: string) =>
   (await pool.query('SELECT * FROM businesses WHERE owner_id = $1', [ownerId])).rows;
 
-// Fills in the first step and moves on.
+// Fills in the first step and moves on. "Something else" starts with messages on and transfers off.
 async function fillBusinessStep(page: Page) {
+  await page.getByText('Something else', { exact: true }).click();
   await page.getByLabel('Business name').fill('Rapid Flow Plumbing');
   await page.getByLabel('What does your business do?').fill('a family-owned plumbing company in Austin');
   await page.getByLabel('Opening hours').fill('Monday to Friday 8am to 6pm');
@@ -68,8 +69,11 @@ test('each step says what is missing, and the message goes once it is fixed', as
   await signIn();
   await page.goto('/setup');
   await next(page);
+  await expect(page.getByText('Pick the kind of business.')).toBeVisible();
   await expect(page.getByText('Enter the business name.')).toBeVisible();
   await expect(page.getByText('Describe the business in a few words.')).toBeVisible();
+  await page.getByText('Something else', { exact: true }).click();
+  await expect(page.getByText('Pick the kind of business.')).toBeHidden();
   await page.getByLabel('Business name').fill('Rapid Flow Plumbing');
   await expect(page.getByText('Enter the business name.')).toBeHidden();
 
