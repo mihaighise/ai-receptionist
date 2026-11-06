@@ -74,6 +74,7 @@ export type BusinessSettings = Pick<
   Business,
   | 'name'
   | 'description'
+  | 'business_type'
   | 'address'
   | 'hours'
   | 'phone'

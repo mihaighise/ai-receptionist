@@ -5,9 +5,11 @@ import { z } from 'zod';
 import type { Business } from '@/api/businesses';
 import type { BusinessSettings } from '@/api/owner';
 import { optionalPhone, phoneField } from '@/features/businesses/business-schema';
+import { skillUi } from '@/features/skills';
 
 export const setupSchema = z
   .object({
+    business_type: z.string().min(1, 'Pick the kind of business.'),
     name: z.string().trim().min(1, 'Enter the business name.'),
     description: z.string().trim().min(1, 'Describe the business in a few words.'),
     address: z.string(),
@@ -23,20 +25,24 @@ export const setupSchema = z
     // One question and answer per line.
     faq: z.string(),
   })
-  .refine((values) => !values.features.includes('transfers') || values.transfer_number.trim(), {
-    message: 'Enter the number to transfer callers to.',
-    path: ['transfer_number'],
-  })
-  .refine(
-    (values) => !values.features.includes('messages') || values.notify_sms.trim() || values.notify_whatsapp.trim(),
-    { message: 'Enter a number to send messages to, by SMS or WhatsApp.', path: ['notify_sms'] },
-  );
+  // Each skill that's switched on checks its own settings (src/features/skills).
+  .superRefine((values, ctx) => {
+    for (const id of values.features) {
+      for (const [field, message] of Object.entries(skillUi(id).check?.(values) ?? {})) {
+        ctx.addIssue({ code: 'custom', path: [field], message });
+      }
+    }
+  });
 
 export type SetupValues = z.infer<typeof setupSchema>;
 
 // The wizard's steps, in order, with the fields each one asks for.
 export const STEPS = [
-  { id: 'business', title: 'Your business', fields: ['name', 'description', 'address', 'phone', 'hours'] },
+  {
+    id: 'business',
+    title: 'Your business',
+    fields: ['business_type', 'name', 'description', 'address', 'phone', 'hours'],
+  },
   { id: 'languages', title: 'Languages', fields: ['mainLanguage', 'otherLanguages'] },
   {
     id: 'actions',
@@ -52,6 +58,7 @@ export const stepOfField = (field: string) =>
   STEPS.findIndex((step) => (step.fields as readonly string[]).includes(field));
 
 export const emptySetup: SetupValues = {
+  business_type: '',
   name: '',
   description: '',
   address: '',
@@ -70,6 +77,7 @@ export const emptySetup: SetupValues = {
 export function toSetupValues(business: Business): SetupValues {
   const [mainLanguage = 'en', ...otherLanguages] = business.languages;
   return {
+    business_type: business.business_type,
     name: business.name,
     description: business.description,
     address: business.address,
@@ -88,6 +96,7 @@ export function toSetupValues(business: Business): SetupValues {
 
 export function toSettings(values: SetupValues): BusinessSettings {
   return {
+    business_type: values.business_type,
     name: values.name.trim(),
     description: values.description.trim(),
     address: values.address.trim(),

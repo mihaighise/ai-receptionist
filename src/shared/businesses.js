@@ -2,21 +2,18 @@
 // the rest of the code uses (the business details, the languages it speaks and the actions turned
 // on for it); the API (src/api) also creates, edits and deletes them, and finds an owner's business.
 
+import { SKILLS } from '../skills/index.js';
 import { pool } from './db/pool.js';
 import { PAID_STATUSES } from './plans.js';
 
-// What the receptionist can do for a business, with a label for the admin site. The features
-// CHECK in db/migrations must list the same codes.
-export const FEATURES = {
-  messages: 'Take messages for the staff',
-  transfers: 'Transfer callers to a person',
-};
+// What the receptionist can do for a business: its skills (src/skills), id -> the name owners see.
+export const FEATURES = Object.fromEntries(SKILLS.map((skill) => [skill.id, skill.label]));
 
-// The columns the admin site can set.
+// The columns the admin site can set: the core ones, and each skill's settings.
 const EDITABLE_COLUMNS = [
-  'slug', 'name', 'description', 'address', 'hours', 'phone', 'faq', 'twilio_number',
-  'languages', 'features', 'transfer_number', 'notify_sms', 'notify_whatsapp', 'urgent_when', 'active', 'owner_id',
-  'requires_subscription',
+  'slug', 'name', 'description', 'business_type', 'address', 'hours', 'phone', 'faq', 'twilio_number',
+  'languages', 'features', 'active', 'owner_id', 'requires_subscription',
+  ...new Set(SKILLS.flatMap((skill) => Object.keys(skill.settings))),
 ];
 
 // The businesses that answer calls: active ones, and if they need a subscription, only while it's
@@ -26,10 +23,11 @@ const ANSWERS_CALLS = 'active AND (NOT requires_subscription OR subscription_sta
 // Business rows with their owner's email (owner_email), which the admin site shows instead of the ID.
 const ROWS_WITH_OWNER = `SELECT b.*, u.email AS owner_email FROM businesses b LEFT JOIN "user" u ON u.id = b.owner_id`;
 
-// Database row -> business. An action that is turned off, or is missing the number it needs,
-// comes out empty, so the receptionist is never offered a tool that can't work.
+// Database row -> business. Each skill fills in its part of `actions`; one that is turned off, or
+// is missing the number it needs, comes out empty, so the receptionist is never offered a tool
+// that can't work.
 export function toBusiness(row) {
-  const has = (feature) => row.features.includes(feature);
+  const actions = Object.assign({}, ...SKILLS.map((skill) => skill.actions(row, row.features.includes(skill.id))));
   return {
     id: row.id,
     name: row.name,
@@ -40,12 +38,7 @@ export function toBusiness(row) {
     faq: row.faq,
     twilioNumber: row.twilio_number,
     languages: row.languages,
-    actions: {
-      messages: has('messages'),
-      notify: { sms: row.notify_sms, whatsapp: row.notify_whatsapp },
-      transfer: { number: has('transfers') ? row.transfer_number : null },
-      urgentWhen: row.urgent_when,
-    },
+    actions,
   };
 }
 

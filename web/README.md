@@ -43,6 +43,7 @@ TypeScript, Vite, React, TanStack Router (pages), TanStack Query (loading and sa
 | `src/features/owner/`      | The owner app: sign-in page, its layout and the dashboard                                                               |
 | `src/features/billing/`    | The plan page, the Manage billing button and plan wording                                                               |
 | `src/features/setup/`      | The owner's setup wizard: its steps, checks and review                                                                  |
+| `src/features/skills/`     | Each skill's settings in the setup, its check and its line on the review step (the server's half is in `src/skills/`)   |
 | `src/routes/`              | The admin site's layout and pages                                                                                       |
 | `src/features/businesses/` | Admin: the business list, the form and its validation, the preview and the delete dialog                                |
 | `src/api/`                 | The API client, and the hooks that load and save businesses and the owner's data                                        |

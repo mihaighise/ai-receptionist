@@ -18,6 +18,7 @@
 
 import { pool } from '../shared/db/pool.js';
 import { getBusinessRow } from '../shared/businesses.js';
+import { APP_NAME } from '../shared/brand.js';
 import { isPaid } from '../shared/plans.js';
 import { getTwilioClient } from '../shared/twilio.js';
 
@@ -97,7 +98,7 @@ export function createPhoneNumbers({
         phoneNumber,
         voiceUrl,
         voiceMethod: 'POST',
-        friendlyName: `Bivoz: ${row.name}`.slice(0, 64),
+        friendlyName: `${APP_NAME}: ${row.name}`.slice(0, 64),
       });
       await pool.query(
         "UPDATE phone_number_orders SET status = 'bought', phone_number = $2, twilio_sid = $3, updated_at = now() WHERE id = $1",

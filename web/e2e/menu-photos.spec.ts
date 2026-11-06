@@ -16,10 +16,11 @@ const LINES = ['Menu (Pizzas): Margherita, tomato, mozzarella, basil, $14.', 'Me
 // Goes to the Common questions step of a new setup.
 async function openFaqStep(page: Page) {
   await page.goto('/setup');
+  await page.getByText('Restaurant or café', { exact: true }).click();
   await page.getByLabel('Business name').fill('Luigi’s Pizzeria');
   await page.getByLabel('What does your business do?').fill('a family pizzeria in Austin');
   for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByLabel('Transfer callers to a person').uncheck();
+  // A restaurant starts with messages on; off here, so this step needs nothing filled in.
   await page.getByLabel('Take messages for the staff').uncheck();
   await page.getByRole('button', { name: 'Next' }).click();
   await expect(page.getByLabel('What do callers often ask?')).toBeVisible();

@@ -9,6 +9,7 @@
 //     invoices and cancel at the end of the month.
 // Only runs with a test key (sk_test_ / rk_test_) for now.
 
+import { APP_NAME } from '../shared/brand.js';
 import { PLANS, TOP_UP } from '../shared/plans.js';
 import { createStripe, PORTAL_METADATA } from './billing.js';
 
@@ -52,7 +53,7 @@ async function setUpProduct(productId, details, { lookupKey, unitAmount, recurri
 const setUpPlan = (code, plan) =>
   setUpProduct(
     `bivoz_${code}`,
-    { name: `Bivoz ${plan.name}`, description: `${plan.minutes} call minutes a month`, metadata: { plan: code } },
+    { name: `${APP_NAME} ${plan.name}`, description: `${plan.minutes} call minutes a month`, metadata: { plan: code } },
     {
       lookupKey: plan.lookupKey,
       unitAmount: plan.priceCents,
@@ -63,7 +64,7 @@ const setUpPlan = (code, plan) =>
 
 async function setUpPortal(products) {
   const settings = {
-    business_profile: { headline: 'Manage your Bivoz plan' },
+    business_profile: { headline: `Manage your ${APP_NAME} plan` },
     features: {
       subscription_update: {
         enabled: true,
@@ -93,7 +94,7 @@ const products = [];
 for (const [code, plan] of Object.entries(PLANS)) products.push(await setUpPlan(code, plan));
 await setUpProduct(
   'bivoz_extra_minutes',
-  { name: 'Bivoz extra minutes', description: "Call minutes for when the plan's run out. They don't expire." },
+  { name: `${APP_NAME} extra minutes`, description: "Call minutes for when the plan's run out. They don't expire." },
   { lookupKey: TOP_UP.lookupKey, unitAmount: TOP_UP.centsPerMinute, label: `Extra minutes: $${TOP_UP.centsPerMinute / 100}/minute` },
 );
 // Only the plans can be switched between on the billing page.

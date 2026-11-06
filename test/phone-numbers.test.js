@@ -80,7 +80,7 @@ test('live: buys a local number in the business’s area code and points it at t
     phoneNumber: '+15125550199',
     voiceUrl: 'https://phone.test/incoming-call',
     voiceMethod: 'POST',
-    friendlyName: 'Bivoz: Rapid Flow Plumbing',
+    friendlyName: 'Oriana Agent: Rapid Flow Plumbing',
   });
   assert.equal(updated.twilio_number, '+15125550199');
   assert.match(updated.twilio_number_sid, /^PN\d{32}$/);

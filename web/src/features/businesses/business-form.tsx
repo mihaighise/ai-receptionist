@@ -179,6 +179,26 @@ export function BusinessForm({ business }: { business: Business | null }) {
             {...register('description')}
           />
         </FormField>
+        <FormField label="Kind of business" hint="Sets the examples in the owner's setup.">
+          <Controller
+            control={control}
+            name="business_type"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger className="w-full" aria-label="Kind of business">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(options?.businessTypes ?? []).map((type) => (
+                    <SelectItem key={type.code} value={type.code}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </FormField>
         <FormField label="Address" htmlFor="address">
           <Input id="address" {...register('address')} />
         </FormField>

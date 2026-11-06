@@ -1,8 +1,14 @@
-# ai-receptionist
+# Oriana Agent
 
-An AI voice receptionist that answers phone calls. Callers talk to it in natural speech. It answers questions about the business, takes messages, transfers callers to a person and hangs up when the call is done.
+The code for **Oriana Agent** (the repository is still called ai-receptionist): an AI voice receptionist that answers phone calls. Callers talk to it in natural speech. It answers questions about the business, takes messages, transfers callers to a person and hangs up when the call is done.
 
-One server answers for many businesses. Each business has its own Twilio number, and its details, languages and enabled actions are stored in Postgres.
+One server answers for many businesses. Each business has its own Twilio number, and its details, languages and skills are stored in Postgres.
+
+### Skills and business types
+
+What the receptionist can do beyond answering questions comes from **skills** (`src/skills/`): today *messages* (take a message for the staff) and *transfers* (put the caller through to a person). Each skill is one file with everything about it: its name for owners, its settings and their checks, its lines in Claude's instructions, its Claude tools, and what it does on a live call. `src/skills/index.js` lists them and describes what a skill must provide. The core (`prompt.js`, `receptionist.js`, the settings checks and the owner app) asks the skills, so a new one is a new file plus one line in the list, and its settings screen in `web/src/features/skills/`. A business switches skills on in its settings (`businesses.features` holds their ids).
+
+**Business types** (`src/shared/business-types.js`) give owners a template: Home services, Restaurant or café, Salon, spa or barber, Dental or medical office, or Something else. The owner picks one in the setup's first step, which switches on that type's skills, fills the fields with examples that fit, and offers common questions to start from (tap one, then fill in the ___ parts). The type never changes what Claude is told; only what the owner writes does.
 
 ## How it works
 
@@ -94,6 +100,8 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 |---|---|
 | `businesses.js` | Reads and writes businesses in the database |
 | `users.js` | Looks up people who have signed in (the table belongs to Better Auth) |
+| `business-types.js` | The kinds of business and their templates for the setup |
+| `brand.js` | The product name the server uses (Stripe products, Twilio number names) |
 | `plans.js` | The plans, their prices and minutes, extra minutes, and which subscription statuses count as paid |
 | `twilio.js` | Shared Twilio REST client: transfers, hangups, alerts and buying numbers |
 | `usage.js` | Counts call minutes: records each call, uses extra minutes past the plan's, and decides whether a new call is answered |
@@ -102,6 +110,14 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `db/pool.js` | Postgres connection pool |
 | `db/migrate.js` | Runs the SQL files in `db/migrations` that haven't run yet (on startup, or `npm run db:migrate`) |
 | `db/seed.js` | Demo businesses, added with `npm run db:seed` |
+
+**`src/skills/`: what the receptionist can do** (see Skills and business types above)
+
+| File | What it does |
+|---|---|
+| `index.js` | The list of skills, and what every skill provides |
+| `messages.js` | Take a message for the staff, sent to the owner by SMS and/or WhatsApp when the call ends |
+| `transfers.js` | Put the caller through to a person |
 
 **Everything else**
 
