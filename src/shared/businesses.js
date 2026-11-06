@@ -182,14 +182,22 @@ export async function setStripeCustomer(businessId, customerId) {
   return rows[0]?.stripe_customer_id ?? null;
 }
 
-// subscription: { id, plan, status, periodEnd (Date), cancels }, the business's copy of its Stripe
+// subscription: { id, plan, status, periodStart, periodEnd (Dates), cancels }, the business's copy of its Stripe
 // subscription. Returns the row, or null if no business has this customer.
 export async function saveSubscription(customerId, subscription) {
   const { rows } = await pool.query(
     `UPDATE businesses SET stripe_subscription_id = $2, plan = $3, subscription_status = $4,
-       subscription_period_end = $5, subscription_cancels = $6
+       subscription_period_start = $5, subscription_period_end = $6, subscription_cancels = $7
      WHERE stripe_customer_id = $1 RETURNING id`,
-    [customerId, subscription.id, subscription.plan, subscription.status, subscription.periodEnd, subscription.cancels],
+    [
+      customerId,
+      subscription.id,
+      subscription.plan,
+      subscription.status,
+      subscription.periodStart,
+      subscription.periodEnd,
+      subscription.cancels,
+    ],
   );
   return rows[0] ? getBusinessRow(rows[0].id) : null;
 }

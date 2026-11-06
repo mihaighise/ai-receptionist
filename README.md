@@ -93,7 +93,8 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 |---|---|
 | `businesses.js` | Reads and writes businesses in the database |
 | `users.js` | Looks up people who have signed in (the table belongs to Better Auth) |
-| `plans.js` | The plans, their prices and minutes, and which subscription statuses count as paid |
+| `plans.js` | The plans, their prices and minutes, extra minutes, and which subscription statuses count as paid |
+| `usage.js` | Counts call minutes: records each call, uses extra minutes past the plan's, and decides whether a new call is answered |
 | `prompt.js` | Builds the greeting and Claude's instructions from a business |
 | `languages.js` | The languages the receptionist can speak, with the greeting lines in each |
 | `db/pool.js` | Postgres connection pool |
@@ -201,20 +202,26 @@ Owners stay signed in for 7 days. Signing in is protected by Better Auth's rate 
 
 Owners pay with Stripe. Businesses they set up themselves only answer calls while their plan is paid for (`active`, `trialing`, or `past_due` while Stripe retries a failed payment). Businesses added in the admin site, like the demo businesses, don't need a plan.
 
-- **Plans** (`src/shared/plans.js`): Starter $79 (200 minutes), Pro $179 (600) and Business $349 (1,500) a month. Minutes aren't counted or capped yet.
+- **Plans** (`src/shared/plans.js`): Starter $79 (200 minutes), Pro $179 (600) and Business $349 (1,500) a month.
 - **Choosing a plan** (`/plan`): owners pay on Stripe's own Checkout page, so card details never reach this app, and come back to the dashboard.
 - **Manage billing** on the dashboard opens Stripe's billing page: switch plans, update the card, see invoices, or cancel at the end of the month. An upgrade is charged straight away for the rest of the month; a downgrade starts when the month already paid for ends.
 - Stripe tells the API about every change (payments, failed payments, plan changes, cancellations) with webhooks to `/api/stripe/webhook`, and each business keeps a copy of its subscription in the `businesses` table. Webhooks are required: without them, renewals, failures and cancellations are never seen.
 
+**Minutes** (`src/shared/usage.js`): every answered call is recorded in the `calls` table when it ends, rounded up to whole minutes like Twilio bills them. Each billing month (as Stripe reports it) starts from zero. Owners see "123 of 600 minutes used" on the dashboard, with a warning at 80%.
+- **Extra minutes**: the slider on the plan page buys 50–2,000 minutes at $0.45 each (more per minute than any plan, so upgrading is the better deal for steady use), as a one-time payment on Stripe Checkout. They don't expire, and are only used once a month's plan minutes run out (kept in the `extra_minutes` table).
+- **Plan changes**: an upgrade's minutes apply straight away (Stripe charges the difference for the rest of the month); after a downgrade the current plan and its minutes last until the month ends.
+- **Out of minutes**: a call in progress is never cut off. New calls go straight to the business's transfer number if transfers are on; otherwise callers hear "Sorry, we can't take your call right now. Please call back later."
+- Businesses that don't need a plan (the demo businesses) have no limit.
+
 **Setting up Stripe** (once, in test mode):
 1. In the [Stripe Dashboard](https://dashboard.stripe.com), switch to test mode (or a sandbox), open **Developers → API keys** and put the secret key (`sk_test_...`) in `STRIPE_SECRET_KEY` in `.env`.
-2. Run `npm run stripe:setup`. It creates a product and monthly price for each plan, and the billing page settings. It's safe to run again, and only runs with a test key.
+2. Run `npm run stripe:setup`. It creates a product and monthly price for each plan, the extra-minutes price, and the billing page settings. It's safe to run again, and only runs with a test key.
 3. Install the [Stripe CLI](https://docs.stripe.com/stripe-cli) (`brew install stripe/stripe-cli/stripe`), run `stripe login`, and put the output of `stripe listen --print-secret` in `STRIPE_WEBHOOK_SECRET` in `.env`. Restart the API.
 
 **While testing payments**, keep the CLI forwarding webhooks to the API (use port 5173 instead of 3001 with the dev servers):
 
 ```bash
-stripe listen --events checkout.session.completed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed,invoice.paid,invoice.payment_failed --forward-to localhost:3001/api/stripe/webhook
+stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed,invoice.paid,invoice.payment_failed --forward-to localhost:3001/api/stripe/webhook
 ```
 
 Pay with the card `4242 4242 4242 4242`, any future date and any CVC; nothing is charged in test mode.

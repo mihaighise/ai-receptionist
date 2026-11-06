@@ -22,6 +22,11 @@ const isSignedIn = async () => Boolean((await authClient.getSession()).data);
 
 const rootRoute = createRootRoute({ component: Outlet });
 
+// ?checkout=<Stripe Checkout Session ID>, on the pages Stripe sends owners back to.
+const checkoutSearch = (search: Record<string, unknown>) => ({
+  checkout: typeof search.checkout === 'string' ? search.checkout : undefined,
+});
+
 // Owner app. Everything inside needs a signed-in owner; anyone else goes to the sign-in page.
 const ownerRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -53,13 +58,17 @@ const routeTree = rootRoute.addChildren([
       getParentRoute: () => ownerRoute,
       path: '/',
       component: DashboardPage,
-      // Stripe sends owners back with ?checkout=<Checkout Session ID> after paying.
-      validateSearch: (search: Record<string, unknown>) => ({
-        checkout: typeof search.checkout === 'string' ? search.checkout : undefined,
-      }),
+      // Stripe sends owners back with ?checkout=<Checkout Session ID> after paying for a plan.
+      validateSearch: checkoutSearch,
     }),
     createRoute({ getParentRoute: () => ownerRoute, path: '/setup', component: SetupPage }),
-    createRoute({ getParentRoute: () => ownerRoute, path: '/plan', component: PlanPage }),
+    createRoute({
+      getParentRoute: () => ownerRoute,
+      path: '/plan',
+      component: PlanPage,
+      // Stripe sends owners back with ?checkout=<Checkout Session ID> after buying extra minutes.
+      validateSearch: checkoutSearch,
+    }),
   ]),
   signInRoute,
   adminRoute.addChildren([

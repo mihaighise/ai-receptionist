@@ -1,6 +1,6 @@
-import { Navigate } from '@tanstack/react-router';
+import { Navigate, useNavigate, useSearch } from '@tanstack/react-router';
 import { ArrowRight, Check, CircleCheck, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { type Plan, useCheckout, useMe, usePlans } from '@/api/owner';
 import { PageHeader } from '@/components/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -11,6 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ManageBillingButton } from './manage-billing-button';
 import { formatDate, planName } from './plan-format';
+import { TopUpCard } from './top-up-card';
+import { UsageMeter, usageLevel } from './usage-meter';
+import { useCheckoutReturn } from './use-checkout-return';
 
 // What every plan includes; they differ only in call minutes.
 const INCLUDED = [
@@ -55,6 +58,11 @@ export function PlanPage() {
   const plans = usePlans();
   const checkout = useCheckout();
   const [selected, setSelected] = useState(POPULAR);
+  // Stripe sends owners back here after buying extra minutes.
+  const navigate = useNavigate();
+  const search = useSearch({ from: '/owner/plan' });
+  const clearCheckout = useCallback(() => navigate({ to: '/plan', search: {}, replace: true }), [navigate]);
+  useCheckoutReturn(search.checkout, clearCheckout);
 
   if (me.isPending || plans.isPending) return <Skeleton className="h-96" />;
   if (me.error || plans.error) {
@@ -69,44 +77,71 @@ export function PlanPage() {
   const { billing } = me.data;
   if (billing && !billing.needsPlan) {
     const current = plans.data.plans.find((plan) => plan.code === billing.plan);
+    if (!current) {
+      return (
+        <div className="flex flex-col gap-6">
+          <PageHeader title="Plan & billing" />
+          <p className="text-muted-foreground">Your receptionist is included: there's nothing to pay.</p>
+        </div>
+      );
+    }
+    const out = usageLevel(billing.usage) === 'out';
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Plan & billing" description="Your plan, and where to change it." />
-        {current ? (
-          <Card className="max-w-2xl">
-            <CardContent className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-muted-foreground text-sm">Current plan</p>
-                  <p className="font-semibold text-2xl tracking-tight">{current.name}</p>
-                  <p className="text-muted-foreground text-sm">
-                    {current.minutes.toLocaleString('en-US')} call minutes a month
+        <PageHeader title="Plan & billing" description="Your plan, this month's minutes, and extra minutes." />
+        {out && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              You've used all your minutes, so new calls aren't being answered. Buy extra minutes below, or upgrade your
+              plan under Manage billing.
+            </AlertDescription>
+          </Alert>
+        )}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardContent className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-muted-foreground text-sm">Current plan</p>
+                    <p className="font-semibold text-2xl tracking-tight">{current.name}</p>
+                    <p className="text-muted-foreground text-sm">
+                      {current.minutes.toLocaleString('en-US')} call minutes a month
+                    </p>
+                  </div>
+                  <p>
+                    <span className="font-semibold text-2xl">${current.priceCents / 100}</span>
+                    <span className="text-muted-foreground"> / month</span>
                   </p>
                 </div>
-                <p>
-                  <span className="font-semibold text-2xl">${current.priceCents / 100}</span>
-                  <span className="text-muted-foreground"> / month</span>
-                </p>
-              </div>
-              {billing.periodEnd && (
-                <p className="text-sm">
-                  {billing.cancels
-                    ? `Your plan ends on ${formatDate(billing.periodEnd)}.`
-                    : `Renews on ${formatDate(billing.periodEnd)}.`}
-                </p>
-              )}
-              <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-muted-foreground text-sm">
-                  You're on {planName(current.code)}. Change your plan or card, see invoices, or cancel on Stripe's
-                  billing page. Upgrades start right away; downgrades at the end of the month.
-                </p>
-                <ManageBillingButton variant="default" />
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <p className="text-muted-foreground">Your receptionist is included: there's nothing to pay.</p>
-        )}
+                {billing.periodEnd && (
+                  <p className="text-sm">
+                    {billing.cancels
+                      ? `Your plan ends on ${formatDate(billing.periodEnd)}.`
+                      : `Renews on ${formatDate(billing.periodEnd)}.`}
+                  </p>
+                )}
+                <div className="flex flex-col gap-3 border-t pt-5">
+                  <p className="text-muted-foreground text-sm">
+                    Change your plan or card, see invoices, or cancel on Stripe's billing page. An upgrade is charged
+                    for the rest of the month and its minutes start right away; after a downgrade you keep{' '}
+                    {planName(current.code)} and its minutes until the month ends.
+                  </p>
+                  <ManageBillingButton variant="default" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex flex-col gap-4">
+                <h2 className="font-semibold text-lg">Minutes this month</h2>
+                <UsageMeter usage={billing.usage} />
+              </CardContent>
+            </Card>
+          </div>
+          <div className="lg:self-start">
+            <TopUpCard topUp={plans.data.topUp} testMode={plans.data.testMode} />
+          </div>
+        </div>
       </div>
     );
   }

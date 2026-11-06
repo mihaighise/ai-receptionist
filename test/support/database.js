@@ -25,9 +25,10 @@ export async function setUpTestDatabase() {
   await migrate();
 }
 
-// Deletes every business and every user, with their sessions and accounts.
+// Deletes every business (with its calls and extra minutes) and every user (with their sessions and
+// accounts).
 export async function emptyTestDatabase() {
-  await pool.query('TRUNCATE businesses, session, account, verification, "user"');
+  await pool.query('TRUNCATE calls, extra_minutes, businesses, session, account, verification, "user"');
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

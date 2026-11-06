@@ -8,6 +8,10 @@ export const PLANS = {
   business: { name: 'Business', priceCents: 34900, minutes: 1500, lookupKey: 'bivoz_business_monthly' },
 };
 
+// Extra minutes, bought with a one-time payment on the plan page. They don't expire, and are used
+// once a month's plan minutes run out. npm run stripe:setup creates their Price.
+export const TOP_UP = { centsPerMinute: 45, lookupKey: 'bivoz_extra_minute', min: 50, max: 2000, step: 50 };
+
 // Stripe subscription statuses that keep a business answering calls. past_due is included: Stripe
 // is still retrying the payment, and cancels the subscription if every retry fails.
 export const PAID_STATUSES = ['active', 'trialing', 'past_due'];

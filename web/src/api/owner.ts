@@ -21,6 +21,30 @@ export interface Billing {
   // When the current month ends: the next payment, or the end of the plan if it cancels.
   periodEnd: string | null;
   cancels: boolean;
+  usage: Usage;
+}
+
+// Call minutes this billing month (src/shared/usage.js).
+export interface Usage {
+  // False for businesses without a subscription, which have no limit (the numbers are then 0).
+  limited: boolean;
+  // Included in the plan each month.
+  planMinutes: number;
+  used: number;
+  // Bought extra minutes left; they don't expire.
+  extra: number;
+  // Plan minutes left this month plus extra minutes. At 0, new calls aren't answered.
+  remaining: number;
+  periodStart: string | null;
+  periodEnd: string | null;
+}
+
+// Extra minutes: their price, and the slider's range.
+export interface TopUp {
+  centsPerMinute: number;
+  min: number;
+  max: number;
+  step: number;
 }
 
 export interface Plan {
@@ -91,7 +115,7 @@ export const usePlans = () =>
   useQuery({
     queryKey: ['owner', 'plans'],
     // testMode: payments are pretend (a Stripe test key), so the page says which card to use.
-    queryFn: () => api<{ plans: Plan[]; testMode: boolean }>('GET', '/owner/plans'),
+    queryFn: () => api<{ plans: Plan[]; topUp: TopUp; testMode: boolean }>('GET', '/owner/plans'),
     staleTime: Infinity,
   });
 
@@ -102,12 +126,22 @@ export const useCheckout = () =>
     onSuccess: ({ url }) => window.location.assign(url),
   });
 
-// After Checkout: makes sure the new plan shows straight away.
+// Buys extra minutes: sends the browser to Stripe's Checkout page.
+export const useTopUp = () =>
+  useMutation({
+    mutationFn: (minutes: number) => api<{ url: string }>('POST', '/owner/billing/top-up', { minutes }),
+    onSuccess: ({ url }) => window.location.assign(url),
+  });
+
+// After Checkout: makes sure the new plan or the extra minutes show straight away. kind: what was
+// paid for; added: the extra minutes it added (0 for a plan, or if they were already added).
 export function useConfirmCheckout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (sessionId: string) => api<Billing>('POST', '/owner/billing/confirm', { sessionId }),
-    onSuccess: (billing) => queryClient.setQueryData<Me>(ME_KEY, (me) => me && { ...me, billing }),
+    mutationFn: (sessionId: string) =>
+      api<Billing & { kind: 'plan' | 'top_up'; added: number }>('POST', '/owner/billing/confirm', { sessionId }),
+    onSuccess: ({ kind: _kind, added: _added, ...billing }) =>
+      queryClient.setQueryData<Me>(ME_KEY, (me) => me && { ...me, billing }),
   });
 }
 

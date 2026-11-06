@@ -58,9 +58,11 @@ A typical shop gets 100–300 calls a month at about 2.5 minutes each, so 250–
 | **Starter** | $79 | 200 | ~$12 | ~82% |
 | **Pro** | $179 | 600 | ~$29 | ~82% |
 | **Business** | $349 | 1,500 | ~$67 | ~78% |
-| Extra minutes | $0.20 / minute | | ~$0.042 | ~79% |
+| Extra minutes | $0.45 / minute | | ~$0.042 | ~88% |
 
 Margins include the phone number and Stripe fees. Most customers won't use every included minute, so real margins will be higher.
+
+Extra minutes cost more per minute than any plan (Starter works out at $0.395), so they cover the odd busy month while upgrading stays the better deal for steady use. At $0.20 they were cheaper than the plans: Starter plus 400 extra minutes would have cost less than Pro.
 
 - **What every plan includes:** English and Spanish, message taking, urgent flags, transfers, and alerts by SMS, WhatsApp and email.
 - **Pro and above:** calendar booking (Phase 5), and more languages (Phase 6).
