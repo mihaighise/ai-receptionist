@@ -1,5 +1,7 @@
 import { FormField } from '@/components/form-field';
+import { PhoneField } from '@/components/phone-input';
 import { Input } from '@/components/ui/input';
+import { formatPhone } from '@/lib/phone';
 import type { SkillUi } from './types';
 
 // Take messages for the staff (src/skills/messages.js).
@@ -8,6 +10,7 @@ export const messagesSkill: SkillUi = {
   Settings: ({ form, placeholders }) => {
     const {
       register,
+      control,
       formState: { errors },
     } = form;
     return (
@@ -18,21 +21,14 @@ export const messagesSkill: SkillUi = {
           message and sends it to you as soon as the call ends.
         </p>
         <FormField label="Text messages to" htmlFor="notify_sms" error={errors.notify_sms?.message}>
-          <Input
-            id="notify_sms"
-            inputMode="tel"
-            placeholder="+15125550100"
-            aria-invalid={!!errors.notify_sms}
-            {...register('notify_sms')}
-          />
+          <PhoneField control={control} name="notify_sms" id="notify_sms" invalid={!!errors.notify_sms} />
         </FormField>
         <FormField label="WhatsApp messages to" htmlFor="notify_whatsapp" error={errors.notify_whatsapp?.message}>
-          <Input
+          <PhoneField
+            control={control}
+            name="notify_whatsapp"
             id="notify_whatsapp"
-            inputMode="tel"
-            placeholder="+15125550100"
-            aria-invalid={!!errors.notify_whatsapp}
-            {...register('notify_whatsapp')}
+            invalid={!!errors.notify_whatsapp}
           />
         </FormField>
         <FormField
@@ -52,8 +48,8 @@ export const messagesSkill: SkillUi = {
       : { notify_sms: 'Enter a number to send messages to, by SMS or WhatsApp.' },
   summary: (settings, label) =>
     `${label}, sent to ${[
-      settings.notify_sms && `${settings.notify_sms} by text`,
-      settings.notify_whatsapp && `${settings.notify_whatsapp} on WhatsApp`,
+      settings.notify_sms && `${formatPhone(settings.notify_sms)} by text`,
+      settings.notify_whatsapp && `${formatPhone(settings.notify_whatsapp)} on WhatsApp`,
     ]
       .filter(Boolean)
       .join(' and ')}`,

@@ -8,6 +8,7 @@ import { type Business, useOptions, usePreview, useSaveBusiness } from '@/api/bu
 import { ApiError } from '@/api/client';
 import { CheckboxGroup } from '@/components/checkbox-group';
 import { FormField } from '@/components/form-field';
+import { PhoneField } from '@/components/phone-input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -203,7 +204,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
           <Input id="address" {...register('address')} />
         </FormField>
         <FormField label="Public phone" htmlFor="phone">
-          <Input id="phone" placeholder="+1 555 010 0000" {...register('phone')} />
+          <PhoneField control={control} name="phone" id="phone" />
         </FormField>
         <FormField label="Hours" htmlFor="hours" className="sm:col-span-2">
           <Input id="hours" placeholder="Monday to Friday 8am to 6pm, closed Sunday" {...register('hours')} />
@@ -238,13 +239,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
           hint="The number callers dial. Empty means no calls reach this business."
           error={errors.twilio_number?.message}
         >
-          <Input
-            id="twilio_number"
-            inputMode="tel"
-            placeholder="+18005550100"
-            aria-invalid={!!errors.twilio_number}
-            {...register('twilio_number')}
-          />
+          <PhoneField control={control} name="twilio_number" id="twilio_number" invalid={!!errors.twilio_number} />
         </FormField>
         {business && <NumberOrderStatus businessId={business.id} />}
       </Section>
@@ -320,37 +315,29 @@ export function BusinessForm({ business }: { business: Business | null }) {
           hint="Used when transfers are on."
           error={errors.transfer_number?.message}
         >
-          <Input
+          <PhoneField
+            control={control}
+            name="transfer_number"
             id="transfer_number"
-            inputMode="tel"
-            placeholder="+18005550100"
-            aria-invalid={!!errors.transfer_number}
-            {...register('transfer_number')}
+            invalid={!!errors.transfer_number}
           />
         </FormField>
         <FormField label="Mark urgent when" htmlFor="urgent_when" hint='Finishes "Mark it urgent if …"'>
           <Input id="urgent_when" placeholder="there is a burst pipe or flooding" {...register('urgent_when')} />
         </FormField>
         <FormField label="Send messages by SMS to" htmlFor="notify_sms" error={errors.notify_sms?.message}>
-          <Input
-            id="notify_sms"
-            inputMode="tel"
-            placeholder="+18005550100"
-            aria-invalid={!!errors.notify_sms}
-            {...register('notify_sms')}
-          />
+          <PhoneField control={control} name="notify_sms" id="notify_sms" invalid={!!errors.notify_sms} />
         </FormField>
         <FormField
           label="Send messages by WhatsApp to"
           htmlFor="notify_whatsapp"
           error={errors.notify_whatsapp?.message}
         >
-          <Input
+          <PhoneField
+            control={control}
+            name="notify_whatsapp"
             id="notify_whatsapp"
-            inputMode="tel"
-            placeholder="+18005550100"
-            aria-invalid={!!errors.notify_whatsapp}
-            {...register('notify_whatsapp')}
+            invalid={!!errors.notify_whatsapp}
           />
         </FormField>
       </Section>

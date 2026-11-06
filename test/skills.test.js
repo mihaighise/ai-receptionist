@@ -123,7 +123,7 @@ test('skills check their own settings when on', () => {
   // The admin site may leave the message numbers empty; a badly written number gets the format message.
   assert.deepEqual(fieldsOf(parseBusiness, { slug: 'x', features: ['messages'] }), {});
   assert.deepEqual(fieldsOf(parseSettings, { features: ['transfers'], transfer_number: '12' }), {
-    transfer_number: 'Use international format, e.g. +18005550100.',
+    transfer_number: 'Enter a complete phone number, e.g. +1 800 555 0100.',
   });
   assert.deepEqual(fieldsOf(parseSettings, { features: [] }), {});
 });

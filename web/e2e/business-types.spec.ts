@@ -32,7 +32,7 @@ test('a restaurant starts with messages on, restaurant examples, and restaurant 
   await page.getByRole('button', { name: 'Next' }).click();
 
   await expect(page.getByText('Restaurant or café')).toBeVisible();
-  await expect(page.getByText('Take messages for the staff, sent to +13055550100 by text')).toBeVisible();
+  await expect(page.getByText('Take messages for the staff, sent to +1 305 555 0100 by text')).toBeVisible();
   await page.getByRole('button', { name: 'Finish setup' }).click();
   await expect(page).toHaveURL('/plan');
   const { rows } = await pool.query('SELECT business_type, features, faq FROM businesses WHERE owner_id = $1', [

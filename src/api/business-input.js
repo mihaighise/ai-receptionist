@@ -62,7 +62,7 @@ function settingsErrors(values, { owner = false } = {}) {
   if (values.languages.length === 0) fields.languages = 'Pick at least one language.';
   const phones = ['twilio_number', ...Object.keys(SKILL_SETTINGS).filter((column) => SKILL_SETTINGS[column] === 'phone')];
   for (const column of phones) {
-    if (values[column] && !E164.test(values[column])) fields[column] = 'Use international format, e.g. +18005550100.';
+    if (values[column] && !E164.test(values[column])) fields[column] = 'Enter a complete phone number, e.g. +1 800 555 0100.';
   }
   for (const skill of SKILLS) {
     if (!values.features.includes(skill.id)) continue;

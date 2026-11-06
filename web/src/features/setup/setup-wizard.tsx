@@ -10,6 +10,7 @@ import { useGreetingPreview, useOwnerOptions, useSaveMyBusiness } from '@/api/ow
 import { CheckboxGroup } from '@/components/checkbox-group';
 import { FormField } from '@/components/form-field';
 import { PageHeader } from '@/components/page-header';
+import { PhoneField } from '@/components/phone-input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { skillUi } from '@/features/skills';
 import { APP_NAME } from '@/lib/brand';
+import { formatPhone } from '@/lib/phone';
 import { cn } from '@/lib/utils';
 import { MenuPhotos } from './menu-photos';
 import {
@@ -163,7 +165,7 @@ function BusinessStep({ form, options, isNew }: { form: Form; options: Options; 
         <Input id="address" autoComplete="street-address" {...register('address')} />
       </FormField>
       <FormField label="Your business phone" htmlFor="phone" hint="The number on your website, if callers ask for it.">
-        <Input id="phone" inputMode="tel" autoComplete="tel" placeholder="+1 512 555 0100" {...register('phone')} />
+        <PhoneField control={form.control} name="phone" id="phone" />
       </FormField>
       <FormField label="Opening hours" htmlFor="hours" className="sm:col-span-2">
         <Input id="hours" placeholder={type?.placeholders.hours} {...register('hours')} />
@@ -263,7 +265,6 @@ function ActionsStep({ form, options }: { form: Form; options: Options }) {
           const { Settings } = skillUi(feature.code);
           return Settings && <Settings key={feature.code} form={form} placeholders={type?.placeholders ?? {}} />;
         })}
-      <p className="text-muted-foreground text-xs">Use international format for numbers, e.g. +15125550100.</p>
     </div>
   );
 }
@@ -390,7 +391,7 @@ function ReviewStep({
             {settings.name}, {settings.description}
           </p>
           {settings.address && <p>{settings.address}</p>}
-          {settings.phone && <p>{settings.phone}</p>}
+          {settings.phone && <p>{formatPhone(settings.phone)}</p>}
           {settings.hours && <p>{settings.hours}</p>}
         </Summary>
         <Summary title="Languages" onEdit={() => onEdit('languages')}>
