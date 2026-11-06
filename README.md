@@ -81,6 +81,9 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 | `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, link their owners, and preview them |
 | `owner/routes.js` | `/api/owner/...`: the signed-in owner, and setting up and changing their business |
 | `business-input.js` | Checks the business settings both sites send, and what each may change |
+| `billing.js` | Subscriptions with Stripe: Checkout, the billing page, and keeping each business's copy of its subscription up to date |
+| `stripe-webhook.js` | `/api/stripe/webhook`: Stripe's notifications about subscriptions |
+| `stripe-setup.js` | Creates the plans and billing page settings in Stripe (`npm run stripe:setup`) |
 | `auth.js` | Owner sign-in with Better Auth (`/api/auth/...`): Google now, Microsoft and Apple later |
 | `auth-sql.js` | Prints the SQL Better Auth needs after an upgrade (`npm run db:auth-sql`) |
 
@@ -90,6 +93,7 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 |---|---|
 | `businesses.js` | Reads and writes businesses in the database |
 | `users.js` | Looks up people who have signed in (the table belongs to Better Auth) |
+| `plans.js` | The plans, their prices and minutes, and which subscription statuses count as paid |
 | `prompt.js` | Builds the greeting and Claude's instructions from a business |
 | `languages.js` | The languages the receptionist can speak, with the greeting lines in each |
 | `db/pool.js` | Postgres connection pool |
@@ -179,9 +183,9 @@ Changes apply from the next call. No restart is needed.
 
 ### Owner app
 
-Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. Billing and call history come next.
+Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.
 
-A new owner's business has no Twilio number, so it gets no calls until you add one in the admin site (buying one automatically comes with billing). You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
+A new owner's business has no Twilio number, so it gets no calls until you add one in the admin site (buying one automatically comes next). You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
 
 **Setting up Google sign-in** (once):
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or pick one), then go to **APIs & Services → OAuth consent screen** and set it up: app name, support email, and **External** users. While the app is in **Testing**, only the test users you add there can sign in.
@@ -192,6 +196,30 @@ A new owner's business has no Twilio number, so it gets no calls until you add o
 When the app goes online, add its real address as another redirect URI and set `BETTER_AUTH_URL` to it.
 
 Owners stay signed in for 7 days. Signing in is protected by Better Auth's rate limits, and sign-ins can only return to this app, never to another site.
+
+### Billing
+
+Owners pay with Stripe. Businesses they set up themselves only answer calls while their plan is paid for (`active`, `trialing`, or `past_due` while Stripe retries a failed payment). Businesses added in the admin site, like the demo businesses, don't need a plan.
+
+- **Plans** (`src/shared/plans.js`): Starter $79 (200 minutes), Pro $179 (600) and Business $349 (1,500) a month. Minutes aren't counted or capped yet.
+- **Choosing a plan** (`/plan`): owners pay on Stripe's own Checkout page, so card details never reach this app, and come back to the dashboard.
+- **Manage billing** on the dashboard opens Stripe's billing page: switch plans, update the card, see invoices, or cancel at the end of the month. An upgrade is charged straight away for the rest of the month; a downgrade starts when the month already paid for ends.
+- Stripe tells the API about every change (payments, failed payments, plan changes, cancellations) with webhooks to `/api/stripe/webhook`, and each business keeps a copy of its subscription in the `businesses` table. Webhooks are required: without them, renewals, failures and cancellations are never seen.
+
+**Setting up Stripe** (once, in test mode):
+1. In the [Stripe Dashboard](https://dashboard.stripe.com), switch to test mode (or a sandbox), open **Developers → API keys** and put the secret key (`sk_test_...`) in `STRIPE_SECRET_KEY` in `.env`.
+2. Run `npm run stripe:setup`. It creates a product and monthly price for each plan, and the billing page settings. It's safe to run again, and only runs with a test key.
+3. Install the [Stripe CLI](https://docs.stripe.com/stripe-cli) (`brew install stripe/stripe-cli/stripe`), run `stripe login`, and put the output of `stripe listen --print-secret` in `STRIPE_WEBHOOK_SECRET` in `.env`. Restart the API.
+
+**While testing payments**, keep the CLI forwarding webhooks to the API (use port 5173 instead of 3001 with the dev servers):
+
+```bash
+stripe listen --events checkout.session.completed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed,invoice.paid,invoice.payment_failed --forward-to localhost:3001/api/stripe/webhook
+```
+
+Pay with the card `4242 4242 4242 4242`, any future date and any CVC; nothing is charged in test mode.
+
+**Before taking real payments**: use a [restricted key](https://docs.stripe.com/keys.md#manage-your-api-keys) with only the permissions billing needs instead of the secret key, add a webhook endpoint for the real address in the Stripe Dashboard (with its own signing secret), turn on [Stripe Tax](https://docs.stripe.com/billing/taxes/collect-taxes.md) if you need to collect sales tax (it needs an active tax registration), and handle disputes and refunds.
 
 ## Tests
 
@@ -230,6 +258,8 @@ The browser tests start their own API (port 3101) and web app (port 5199), so th
 | `BETTER_AUTH_URL` | yes | The address owners open the web app on (`http://localhost:5173` in development; Docker sets its own) |
 | `BETTER_AUTH_SECRET` | yes | Signs owners' session cookies. Make one with `openssl rand -base64 32`. Changing it signs everyone out |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for sign-in | Google sign-in keys (see Owner app above). Without them nobody can sign in |
+| `STRIPE_SECRET_KEY` | for billing | Stripe API key (see Billing above). Without it, owners can't choose a plan |
+| `STRIPE_WEBHOOK_SECRET` | for billing | Checks that webhooks come from Stripe: from `stripe listen --print-secret` locally, or the endpoint's signing secret in the Stripe Dashboard |
 | `TWILIO_WHATSAPP_FROM` | no | Your Twilio WhatsApp sender. Defaults to the Twilio Sandbox number (`+14155238886`), which the owner must join first and message every 24 hours |
 | `ECHO` | no | `true` plays the caller's own voice back, to test the audio stream without the AI services |
 | `RECORD_CALLS` | no | `true` has Twilio record calls, for checking audio quality. Recordings are billed by Twilio |

@@ -12,7 +12,8 @@
     "db:migrate": "node --env-file-if-exists=.env src/shared/db/migrate.js",
     "db:seed": "node --env-file-if-exists=.env src/shared/db/seed.js",
     "db:auth-sql": "node --env-file-if-exists=.env src/api/auth-sql.js",
-    "test": "node --import ./test/support/env.js --test --test-concurrency=1 \"test/**/*.test.js\""
+    "test": "node --import ./test/support/env.js --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "stripe:setup": "node --env-file-if-exists=.env src/api/stripe-setup.js"
   },
   "engines": {
     "node": ">=20.12"
@@ -22,6 +23,7 @@
     "better-auth": "^1.7.18",
     "express": "^5.3.0",
     "pg": "^8.23.1",
+    "stripe": "^23.1.0",
     "twilio": "^6.2.0",
     "ws": "^8.22.0"
   }

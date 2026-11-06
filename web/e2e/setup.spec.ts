@@ -42,9 +42,10 @@ test('a new owner sets up their receptionist', async ({ page, signIn }) => {
   await expect(page.getByText('A call-out costs $89.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Finish setup' }).click();
-  await expect(page).toHaveURL('/');
-  await expect(page.getByText('Your receptionist is set up.')).toBeVisible();
-  await expect(page.getByText('Waiting for a phone number')).toBeVisible();
+  await expect(page).toHaveURL('/plan');
+  await expect(page.getByText('Your receptionist is set up. Choose a plan to go live.')).toBeVisible();
+  await page.goto('/');
+  await expect(page.getByText('Choose a plan to go live')).toBeVisible();
 
   const [business, ...others] = await businessesOf(user.id);
   expect(others).toEqual([]);
@@ -59,6 +60,7 @@ test('a new owner sets up their receptionist', async ({ page, signIn }) => {
     urgent_when: 'there is flooding',
     faq: ['We serve all of Austin.', 'A call-out costs $89.'],
     twilio_number: null,
+    requires_subscription: true,
   });
 });
 
@@ -118,8 +120,9 @@ test('Edit settings changes the same business', async ({ page, signIn }) => {
   await next(page);
   await next(page);
   await page.getByRole('button', { name: 'Finish setup' }).click();
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/plan');
 
+  await page.goto('/');
   await page.getByRole('link', { name: 'Edit settings' }).click();
   await expect(page.getByRole('heading', { name: 'Your receptionist' })).toBeVisible();
   await expect(page.getByLabel('Business name')).toHaveValue('Rapid Flow Plumbing');

@@ -2,12 +2,14 @@
 //   /                                the owner app (signed-in owners only)
 //   /sign-in                         owner sign-in
 //   /setup                           set up (or change) the owner's receptionist
+//   /plan                            choose a plan and pay for it (Stripe Checkout)
 //   /admin                           the admin site: the business list
 //   /admin/businesses/new            add a business
 //   /admin/businesses/:businessId    edit a business
 // The admin site is protected by the API, which only answers admin requests from this computer.
 
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router';
+import { PlanPage } from './features/billing/plan-page';
 import { DashboardPage } from './features/owner/dashboard-page';
 import { OwnerLayout } from './features/owner/owner-layout';
 import { SignInPage } from './features/owner/sign-in-page';
@@ -47,8 +49,17 @@ const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: '/admin'
 
 const routeTree = rootRoute.addChildren([
   ownerRoute.addChildren([
-    createRoute({ getParentRoute: () => ownerRoute, path: '/', component: DashboardPage }),
+    createRoute({
+      getParentRoute: () => ownerRoute,
+      path: '/',
+      component: DashboardPage,
+      // Stripe sends owners back with ?checkout=<Checkout Session ID> after paying.
+      validateSearch: (search: Record<string, unknown>) => ({
+        checkout: typeof search.checkout === 'string' ? search.checkout : undefined,
+      }),
+    }),
     createRoute({ getParentRoute: () => ownerRoute, path: '/setup', component: SetupPage }),
+    createRoute({ getParentRoute: () => ownerRoute, path: '/plan', component: PlanPage }),
   ]),
   signInRoute,
   adminRoute.addChildren([

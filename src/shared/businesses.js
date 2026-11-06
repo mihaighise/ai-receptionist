@@ -3,6 +3,7 @@
 // on for it); the API (src/api) also creates, edits and deletes them, and finds an owner's business.
 
 import { pool } from './db/pool.js';
+import { PAID_STATUSES } from './plans.js';
 
 // What the receptionist can do for a business, with a label for the admin site. The features
 // CHECK in db/migrations must list the same codes.
@@ -15,7 +16,12 @@ export const FEATURES = {
 const EDITABLE_COLUMNS = [
   'slug', 'name', 'description', 'address', 'hours', 'phone', 'faq', 'twilio_number',
   'languages', 'features', 'transfer_number', 'notify_sms', 'notify_whatsapp', 'urgent_when', 'active', 'owner_id',
+  'requires_subscription',
 ];
+
+// The businesses that answer calls: active ones, and if they need a subscription, only while it's
+// paid for. $1 is PAID_STATUSES.
+const ANSWERS_CALLS = 'active AND (NOT requires_subscription OR subscription_status = ANY($1))';
 
 // Business rows with their owner's email (owner_email), which the admin site shows instead of the ID.
 const ROWS_WITH_OWNER = `SELECT b.*, u.email AS owner_email FROM businesses b LEFT JOIN "user" u ON u.id = b.owner_id`;
@@ -43,15 +49,18 @@ export function toBusiness(row) {
   };
 }
 
-// The active business that owns this Twilio number (E.164, as Twilio sends it), or null.
+// The business that answers calls to this Twilio number (E.164, as Twilio sends it), or null.
 export async function findBusinessByNumber(twilioNumber) {
-  const { rows } = await pool.query('SELECT * FROM businesses WHERE twilio_number = $1 AND active', [twilioNumber]);
+  const { rows } = await pool.query(`SELECT * FROM businesses WHERE twilio_number = $2 AND ${ANSWERS_CALLS}`, [
+    PAID_STATUSES,
+    twilioNumber,
+  ]);
   return rows[0] ? toBusiness(rows[0]) : null;
 }
 
-// The active business with this ID, or null.
+// The business with this ID, if it answers calls, or null.
 export async function findBusinessById(id) {
-  const { rows } = await pool.query('SELECT * FROM businesses WHERE id = $1 AND active', [id]);
+  const { rows } = await pool.query(`SELECT * FROM businesses WHERE id = $2 AND ${ANSWERS_CALLS}`, [PAID_STATUSES, id]);
   return rows[0] ? toBusiness(rows[0]) : null;
 }
 
@@ -125,8 +134,8 @@ async function unusedSlug(db, name) {
   return slug;
 }
 
-// Saves an owner's settings to their business, creating it (with a slug made from its name) the
-// first time. Returns the row. Saves for the same owner wait for each other, so two at once (a
+// Saves an owner's settings to their business, creating it (with a slug made from its name, and
+// needing a subscription to answer calls) the first time. Returns the row. Saves for the same owner wait for each other, so two at once (a
 // double click) can't create two businesses.
 export async function saveOwnerBusiness(ownerId, values) {
   const client = await pool.connect();
@@ -139,7 +148,12 @@ export async function saveOwnerBusiness(ownerId, values) {
     );
     const id = rows[0]
       ? await updateRow(client, rows[0].id, values)
-      : await insertRow(client, { ...values, slug: await unusedSlug(client, values.name), owner_id: ownerId });
+      : await insertRow(client, {
+          ...values,
+          slug: await unusedSlug(client, values.name),
+          owner_id: ownerId,
+          requires_subscription: true,
+        });
     await client.query('COMMIT');
     return getBusinessRow(id);
   } catch (err) {
@@ -148,6 +162,36 @@ export async function saveOwnerBusiness(ownerId, values) {
   } finally {
     client.release();
   }
+}
+
+// --- Billing (src/api/billing.js) ---
+
+export async function findBusinessRowByStripeCustomer(customerId) {
+  const { rows } = await pool.query(`${ROWS_WITH_OWNER} WHERE b.stripe_customer_id = $1`, [customerId]);
+  return rows[0] ?? null;
+}
+
+// Records the Stripe Customer that pays for this business, unless it already has one. Returns the
+// business's customer ID either way.
+export async function setStripeCustomer(businessId, customerId) {
+  const { rows } = await pool.query(
+    `UPDATE businesses SET stripe_customer_id = COALESCE(stripe_customer_id, $2) WHERE id = $1
+     RETURNING stripe_customer_id`,
+    [businessId, customerId],
+  );
+  return rows[0]?.stripe_customer_id ?? null;
+}
+
+// subscription: { id, plan, status, periodEnd (Date), cancels }, the business's copy of its Stripe
+// subscription. Returns the row, or null if no business has this customer.
+export async function saveSubscription(customerId, subscription) {
+  const { rows } = await pool.query(
+    `UPDATE businesses SET stripe_subscription_id = $2, plan = $3, subscription_status = $4,
+       subscription_period_end = $5, subscription_cancels = $6
+     WHERE stripe_customer_id = $1 RETURNING id`,
+    [customerId, subscription.id, subscription.plan, subscription.status, subscription.periodEnd, subscription.cancels],
+  );
+  return rows[0] ? getBusinessRow(rows[0].id) : null;
 }
 
 // Returns true if a business was deleted.
