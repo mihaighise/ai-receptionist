@@ -76,7 +76,8 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 
 | File | What it does |
 |---|---|
-| `server.js` | The API server; mounts each app's routes under `/api` |
+| `server.js` | Starts the API: checks its settings, migrates the database and listens |
+| `app.js` | The API's routes: each app's under `/api`, and the admin password |
 | `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, link their owners, and preview them |
 | `owner/routes.js` | `/api/owner/...`: the signed-in owner, and setting up and changing their business |
 | `business-input.js` | Checks the business settings both sites send, and what each may change |
@@ -99,8 +100,9 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 
 | Path | What it holds |
 |---|---|
-| `web/` | **Admin site**: a React app with its own `package.json`, Dockerfile and README |
+| `web/` | **Web app** (owner app and admin site): a React app with its own `package.json`, Dockerfile and README |
 | `db/migrations/` | The database schema, one numbered SQL file per change |
+| `test/` | Backend tests (`npm test`), and the helpers the browser tests in `web/e2e` share |
 | `Dockerfile`, `docker-compose.yml` | Containers for Postgres, the phone server, the API, the admin site and the ngrok tunnel |
 
 ## Setup
@@ -190,6 +192,20 @@ A new owner's business has no Twilio number, so it gets no calls until you add o
 When the app goes online, add its real address as another redirect URI and set `BETTER_AUTH_URL` to it.
 
 Owners stay signed in for 7 days. Signing in is protected by Better Auth's rate limits, and sign-ins can only return to this app, never to another site.
+
+## Tests
+
+```bash
+docker compose up -d db     # the tests need Postgres
+npm test                    # backend: checks, saving businesses, the API routes
+cd web
+npm test                    # web: form checks (Vitest)
+npm run test:e2e            # browser tests in Chrome (Playwright): owner app, setup wizard, admin site
+```
+
+Tests never use your data or accounts. They use their own database, `receptionist_test`, which is created on the first run and emptied before each test, and made-up keys instead of `.env` (`test/support/env.js`). Signed-in owners are created with Better Auth's test plugin, so nothing goes to Google.
+
+The browser tests start their own API (port 3101) and web app (port 5199), so they can run while the dev servers or Docker are up. They use the Google Chrome installed on this computer. `npx playwright test --ui` shows them step by step, and a failed test saves a trace to open with `npx playwright show-trace`.
 
 ## Configuration (`.env`)
 

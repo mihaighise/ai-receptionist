@@ -15,6 +15,8 @@ export default defineConfig({
     proxy: { '/api': { target: process.env.API_URL ?? 'http://localhost:3001', xfwd: true } },
   },
   test: {
+    // Unit tests only; the browser tests in e2e/ run with Playwright (npm run test:e2e).
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
