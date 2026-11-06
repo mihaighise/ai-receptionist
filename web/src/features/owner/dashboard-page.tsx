@@ -1,6 +1,7 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import {
   ArrowRight,
+  CalendarCheck,
   Check,
   CreditCard,
   Languages,
@@ -11,7 +12,7 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useCallback } from 'react';
 import type { Business } from '@/api/businesses';
-import { type Billing, useMe } from '@/api/owner';
+import { type Billing, useCalendar, useMe } from '@/api/owner';
 import { PageHeader } from '@/components/page-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -270,6 +271,23 @@ function MinutesCard({ billing }: { billing: Billing }) {
   );
 }
 
+// Booking appointments, and a nudge to connect the calendar until it is: bookings wait for it.
+function BookingsLine({ business }: { business: Business }) {
+  const calendar = useCalendar();
+  const services = (business.booking_settings.services ?? []).map((s) => s.name).join(', ');
+  return (
+    <li className="flex flex-wrap items-center gap-x-1.5">
+      Books appointments <CalendarCheck className="size-3.5 text-muted-foreground" />
+      {services && <span className="text-muted-foreground">→ {services}</span>}
+      {calendar.data && !calendar.data.connected && (
+        <Link to="/setup" className="w-full text-primary text-xs underline-offset-4 hover:underline">
+          Connect your calendar to start booking
+        </Link>
+      )}
+    </li>
+  );
+}
+
 function Overview({ business, billing }: { business: Business; billing: Billing | null }) {
   const sendsTo = [
     business.notify_sms && `${formatPhone(business.notify_sms)} by text`,
@@ -297,6 +315,7 @@ function Overview({ business, billing }: { business: Business; billing: Billing 
               {sendsTo.length > 0 && <span className="text-muted-foreground"> → {sendsTo.join(', ')}</span>}
             </li>
           )}
+          {business.features.includes('bookings') && <BookingsLine business={business} />}
           {business.features.includes('transfers') && (
             <li className="flex items-center gap-1.5">
               Transfers calls <PhoneForwarded className="size-3.5 text-muted-foreground" />

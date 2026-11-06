@@ -18,6 +18,14 @@ const business: Business = {
   notify_sms: null,
   notify_whatsapp: '+40700000000',
   urgent_when: 'the caller is in severe pain',
+  booking_settings: {
+    services: [{ name: 'Checkup', minutes: 60 }],
+    hours: { mon: [{ from: '08:00', to: '12:00' }], sat: [{ from: '09:00', to: '13:00' }] },
+    timeZone: 'America/Chicago',
+    bufferMinutes: 15,
+    noticeHours: 24,
+    horizonDays: 60,
+  },
   active: true,
   owner_id: 'user-1',
   owner_email: 'owner@example.com',
@@ -41,7 +49,7 @@ const errorsFor = (values: object) =>
 
 test('the settings an owner can change survive the round trip through the wizard unchanged', () => {
   const { business_type, name, description, address, hours, phone, faq, languages, features } = business;
-  const { transfer_number, notify_sms, notify_whatsapp, urgent_when } = business;
+  const { transfer_number, notify_sms, notify_whatsapp, urgent_when, booking_settings } = business;
   expect(toSettings(toSetupValues(business))).toEqual({
     business_type,
     name,
@@ -56,6 +64,7 @@ test('the settings an owner can change survive the round trip through the wizard
     notify_sms,
     notify_whatsapp,
     urgent_when,
+    booking_settings,
   });
 });
 
@@ -71,6 +80,25 @@ test('taking messages needs a number to send them to', () => {
 
 test('transfers need a number to transfer to', () => {
   expect(errorsFor({ ...filled, features: ['messages', 'transfers'] })).toEqual(['transfer_number']);
+});
+
+test('bookings need something to book, and open hours that end after they start', () => {
+  const bookings = { ...filled, features: ['messages', 'bookings'] };
+  expect(errorsFor(bookings)).toEqual(['booking_settings']);
+  const services = [{ name: 'Haircut', minutes: 45 }];
+  const withServices = { ...bookings, booking_settings: { ...filled.booking_settings, services } };
+  expect(errorsFor(withServices)).toEqual([]);
+  const days = { ...filled.booking_settings.days, mon: { open: true, from: '17:00', to: '09:00' } };
+  expect(errorsFor({ ...withServices, booking_settings: { ...withServices.booking_settings, days } })).toEqual([
+    'booking_settings',
+  ]);
+});
+
+test("booking hours start as weekdays 9 to 5, in the owner's time zone", () => {
+  const { days, timeZone } = emptySetup.booking_settings;
+  expect(days.mon).toEqual({ open: true, from: '09:00', to: '17:00' });
+  expect(days.sun.open).toBe(false);
+  expect(timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
 });
 
 test('every field is asked for on some step', () => {

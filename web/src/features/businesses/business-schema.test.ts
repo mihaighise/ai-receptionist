@@ -18,6 +18,14 @@ const business: Business = {
   notify_sms: null,
   notify_whatsapp: '+40700000000',
   urgent_when: 'the caller is in severe pain',
+  booking_settings: {
+    services: [{ name: 'Checkup', minutes: 60 }],
+    hours: { mon: [{ from: '08:00', to: '12:00' }], sat: [{ from: '09:00', to: '13:00' }] },
+    timeZone: 'America/Chicago',
+    bufferMinutes: 15,
+    noticeHours: 24,
+    horizonDays: 60,
+  },
   active: true,
   owner_id: 'user-1',
   owner_email: 'owner@example.com',
@@ -31,7 +39,8 @@ const business: Business = {
 
 test('a business survives the round trip through the form unchanged', () => {
   const { id, created_at, owner_id, requires_subscription, plan, subscription_status, ...rest } = business;
-  const { subscription_period_end, subscription_cancels, ...input } = rest;
+  // Booking settings are only set by the owner, so the admin form leaves them out.
+  const { subscription_period_end, subscription_cancels, booking_settings, ...input } = rest;
   expect(toInput(toFormValues(business))).toEqual(input);
 });
 

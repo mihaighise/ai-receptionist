@@ -35,7 +35,9 @@ test('every skill provides what the core needs', () => {
   for (const skill of SKILLS) {
     assert.match(skill.id, /^[a-z_]+$/, skill.id);
     assert.ok(skill.label, `${skill.id}: label`);
-    for (const kind of Object.values(skill.settings)) assert.ok(['phone', 'text'].includes(kind), `${skill.id}: ${kind}`);
+    for (const kind of Object.values(skill.settings)) {
+      assert.ok(typeof kind === 'function' || ['phone', 'text'].includes(kind), `${skill.id}: ${kind}`);
+    }
     for (const fn of ['validate', 'actions', 'live', 'tools', 'startCall']) assert.equal(typeof skill[fn], 'function', `${skill.id}.${fn}`);
     const session = skill.startCall({ business: toBusiness(row(ids)), call: {}, endConversation() {} });
     for (const fn of ['run', 'close', 'outcome']) assert.equal(typeof session[fn], 'function', `${skill.id} call.${fn}`);

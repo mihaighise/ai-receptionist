@@ -49,7 +49,12 @@ function readSettings(body) {
     faq: (Array.isArray(body.faq) ? body.faq : []).map(text).filter(Boolean),
     languages: codes(body.languages, LANGUAGES),
     features: codes(body.features, FEATURES),
-    ...Object.fromEntries(Object.entries(SKILL_SETTINGS).map(([column, kind]) => [column, READ_SETTING[kind](body[column])])),
+    ...Object.fromEntries(
+      Object.entries(SKILL_SETTINGS)
+        .map(([column, kind]) => [column, (typeof kind === 'function' ? kind : READ_SETTING[kind])(body[column])])
+        // A setting the request didn't send is left as it is (the admin site doesn't send them all).
+        .filter(([, value]) => value !== undefined),
+    ),
   };
 }
 

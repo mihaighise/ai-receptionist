@@ -23,6 +23,8 @@ export interface Business {
   notify_sms: string | null;
   notify_whatsapp: string | null;
   urgent_when: string;
+  // What callers can book, and when (the bookings skill). {} until the owner sets them.
+  booking_settings: Partial<BookingSettings>;
   active: boolean;
   owner_id: string | null;
   // The email of the owner's account, for showing and editing who owns it.
@@ -36,9 +38,26 @@ export interface Business {
   created_at: string;
 }
 
-// What the API accepts when creating or saving a business. The owner is given by email.
+// Appointments callers can book (src/skills/bookings/slots.js). Times are 24-hour "HH:MM", in timeZone.
+export interface BookingSettings {
+  services: { name: string; minutes: number }[];
+  // sun..sat -> the bookable hours that day; a day that's missing is closed.
+  hours: Partial<Record<Weekday, { from: string; to: string }[]>>;
+  timeZone: string;
+  // Free time kept after each appointment.
+  bufferMinutes: number;
+  // How soon an appointment can be booked, and how far ahead.
+  noticeHours: number;
+  horizonDays: number;
+}
+
+export type Weekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+
+// What the API accepts when creating or saving a business. The owner is given by email. The admin
+// site leaves booking settings as they are.
 export type BusinessInput = Omit<
   Business,
+  | 'booking_settings'
   | 'id'
   | 'created_at'
   | 'owner_id'
@@ -68,6 +87,8 @@ export interface BusinessType {
   placeholders: { description: string; hours: string; urgent_when: string };
   // Common questions to start from, with ___ for the owner to fill in.
   faq: string[];
+  // What callers usually book, to start the bookings skill's list from.
+  services: { name: string; minutes: number }[];
 }
 
 // The latest automatic Twilio number order for a business (src/api/phone-numbers.js).

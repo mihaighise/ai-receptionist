@@ -18,6 +18,7 @@
 //   POST /api/owner/menu-imports       { photos: [{ mediaType, data (base64) }] } -> { id }: starts
 //                                      reading a menu from photos (menu-import.js)
 //   GET  /api/owner/menu-imports/:id   { status, photos, lines, error }: poll until done or failed
+//   /api/owner/calendar/...            the owner's calendar connection (calendar-routes.js)
 //
 // Owners only change what the receptionist knows and does. Its phone number, whether it answers
 // calls, its plan and who owns it are set by the app (and the admin site), never by the owner.
@@ -39,6 +40,7 @@ import {
 } from '../billing.js';
 import { InputError, options, parseSettings, preview } from '../business-input.js';
 import { MenuImportError } from '../menu-import.js';
+import { calendarRoutes } from './calendar-routes.js';
 
 // Where owners open the app; Stripe sends them back here.
 const APP_URL = process.env.BETTER_AUTH_URL;
@@ -90,6 +92,8 @@ export function ownerRoutes({ stripe, phoneNumbers, menuImports }) {
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
     res.json(await listCalls(business.id, { after, limit }));
   });
+
+  router.use('/calendar', calendarRoutes());
 
   router.get('/plans', (_req, res) => {
     res.json({ plans: planList(), topUp: topUpOptions(), testMode: Boolean(stripe) && isTestMode() });

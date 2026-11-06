@@ -42,9 +42,13 @@ export function toBusiness(row) {
   };
 }
 
+// Business rows for calls, with whether the owner connected a calendar (for the bookings skill).
+const CALL_ROWS = `SELECT businesses.*, EXISTS (SELECT 1 FROM calendar_connections c WHERE c.user_id = businesses.owner_id)
+  AS calendar_connected FROM businesses`;
+
 // The business that answers calls to this Twilio number (E.164, as Twilio sends it), or null.
 export async function findBusinessByNumber(twilioNumber) {
-  const { rows } = await pool.query(`SELECT * FROM businesses WHERE twilio_number = $2 AND ${ANSWERS_CALLS}`, [
+  const { rows } = await pool.query(`${CALL_ROWS} WHERE twilio_number = $2 AND ${ANSWERS_CALLS}`, [
     PAID_STATUSES,
     twilioNumber,
   ]);
@@ -53,7 +57,7 @@ export async function findBusinessByNumber(twilioNumber) {
 
 // The business with this ID, if it answers calls, or null.
 export async function findBusinessById(id) {
-  const { rows } = await pool.query(`SELECT * FROM businesses WHERE id = $2 AND ${ANSWERS_CALLS}`, [PAID_STATUSES, id]);
+  const { rows } = await pool.query(`${CALL_ROWS} WHERE id = $2 AND ${ANSWERS_CALLS}`, [PAID_STATUSES, id]);
   return rows[0] ? toBusiness(rows[0]) : null;
 }
 

@@ -264,7 +264,9 @@ function ActionsStep({ form, options }: { form: Form; options: Options }) {
         .filter((feature) => features.includes(feature.code))
         .map((feature) => {
           const { Settings } = skillUi(feature.code);
-          return Settings && <Settings key={feature.code} form={form} placeholders={type?.placeholders ?? {}} />;
+          return (
+            Settings && <Settings key={feature.code} form={form} placeholders={type?.placeholders ?? {}} type={type} />
+          );
         })}
     </div>
   );
