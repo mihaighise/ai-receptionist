@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useBlocker, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ArrowRight, Check, Loader2, Pencil, Plus } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, type UseFormReturn, useForm, useWatch } from 'react-hook-form';
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { UnsavedChangesGuard } from '@/components/unsaved-changes-guard';
 import { skillUi } from '@/features/skills';
 import { APP_NAME } from '@/lib/brand';
 import { formatPhone } from '@/lib/phone';
@@ -437,10 +438,8 @@ export function SetupWizard({ business }: { business: Business | null }) {
     defaultValues: business ? toSetupValues(business) : emptySetup,
   });
 
-  useBlocker({
-    shouldBlockFn: () => !leaving.current && form.formState.isDirty && !window.confirm('Discard your changes?'),
-    enableBeforeUnload: form.formState.isDirty,
-  });
+  // Read while rendering: react-hook-form only keeps the form state it sees read up to date.
+  const { isDirty } = form.formState;
 
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
@@ -502,6 +501,7 @@ export function SetupWizard({ business }: { business: Business | null }) {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
+      <UnsavedChangesGuard hasChanges={() => !leaving.current && isDirty} />
       <PageHeader
         title={business ? 'Your receptionist' : 'Set up your receptionist'}
         description={

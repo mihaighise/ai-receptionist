@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useBlocker, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { Eye, Loader2, Save } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { UnsavedChangesGuard } from '@/components/unsaved-changes-guard';
 import {
   type BusinessFormValues,
   businessFormSchema,
@@ -68,12 +69,6 @@ export function BusinessForm({ business }: { business: Business | null }) {
     formState: { errors, isDirty },
   } = form;
   const mainLanguage = useWatch({ control, name: 'mainLanguage' });
-
-  // Ask before leaving the page or closing the tab with unsaved changes.
-  useBlocker({
-    shouldBlockFn: () => !leaving.current && form.formState.isDirty && !window.confirm('Discard unsaved changes?'),
-    enableBeforeUnload: isDirty,
-  });
 
   // Puts the API's field messages next to the matching inputs.
   const showError = (err: unknown) => {
@@ -129,6 +124,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
 
   return (
     <form onSubmit={onSave} noValidate className="flex flex-col gap-4">
+      <UnsavedChangesGuard hasChanges={() => !leaving.current && form.formState.isDirty} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-semibold text-xl">{business ? business.name : 'New business'}</h1>
         <Controller

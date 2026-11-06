@@ -46,19 +46,19 @@ test('unsaved changes are guarded, then saved', async ({ page }) => {
   await page.getByLabel('Hours').fill('Monday to Friday');
   await expect(page.getByText('Unsaved changes')).toBeVisible();
 
-  const asked = new Promise<string>((resolve) =>
-    page.once('dialog', (dialog) => {
-      resolve(dialog.message());
-      return dialog.dismiss();
-    }),
-  );
   await page.getByRole('navigation', { name: 'Businesses' }).getByText('Bella Hair Studio').click();
-  expect(await asked).toBe('Discard unsaved changes?');
+  const ask = page.getByRole('alertdialog', { name: 'Discard your changes?' });
+  await ask.getByRole('button', { name: 'Keep editing' }).click();
   await expect(page).toHaveURL(`/admin/businesses/${id}`);
+  await expect(page.getByLabel('Hours')).toHaveValue('Monday to Friday');
 
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved Sunrise Dental')).toBeVisible();
   await expect(page.getByText('Unsaved changes')).toBeHidden();
+  // Saved: leaving no longer asks.
+  await page.getByRole('navigation', { name: 'Businesses' }).getByText('Bella Hair Studio').click();
+  await expect(page.getByLabel('Name')).toHaveValue('Bella Hair Studio');
+  await expect(ask).toBeHidden();
 });
 
 test('deleting asks first, then returns to the list', async ({ page }) => {

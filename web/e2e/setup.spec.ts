@@ -141,21 +141,34 @@ test('Edit settings changes the same business', async ({ page, signIn }) => {
   expect(businesses[0]).toMatchObject({ slug: 'rapid-flow-plumbing', hours: 'Every day 7am to 9pm' });
 });
 
-test('leaving with unsaved answers asks first', async ({ page, signIn }) => {
+test('leaving with unsaved answers asks first, in the app’s own dialog', async ({ page, signIn }) => {
   await signIn();
   await page.goto('/');
   await page.getByRole('link', { name: 'Get started' }).click();
   await page.getByLabel('Business name').fill('Rapid Flow Plumbing');
-  const asked = new Promise<string>((resolve) =>
-    page.once('dialog', (dialog) => {
-      resolve(dialog.message());
-      return dialog.dismiss();
-    }),
-  );
+  // The browser's own confirm box must never appear.
+  page.on('dialog', (dialog) => {
+    throw new Error(`Unexpected browser dialog: ${dialog.message()}`);
+  });
+
+  // Back, then "Keep editing": nothing is lost.
   await page.goBack();
-  expect(await asked).toBe('Discard your changes?');
+  const ask = page.getByRole('alertdialog', { name: 'Discard your changes?' });
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(ask).toBeHidden();
   await expect(page).toHaveURL('/setup');
   await expect(page.getByLabel('Business name')).toHaveValue('Rapid Flow Plumbing');
+
+  // Another page in the sidebar, then "Discard changes": it goes there.
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .locator('visible=true')
+    .getByRole('link', { name: 'Calls' })
+    .click();
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page).toHaveURL('/calls');
 });
 
 test('the wizard fits a phone', async ({ page, signIn }) => {
