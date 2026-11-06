@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
-import { areaCodeOf, createPhoneNumbers, latestNumberOrder } from '../src/api/phone-numbers.js';
+import { areaCodeOf, createPhoneNumbers, latestNumberOrder, releaseDateFor } from '../src/api/phone-numbers.js';
 import { createBusiness, saveOwnerBusiness } from '../src/shared/businesses.js';
 import { pool } from '../src/shared/db/pool.js';
 import { emptyTestDatabase, setUpTestDatabase } from './support/database.js';
@@ -32,6 +32,7 @@ async function business({ phone = '+1 (512) 555-0100', paid = true } = {}) {
 
 const orders = async () => (await pool.query('SELECT * FROM phone_number_orders ORDER BY id')).rows;
 const numberOf = async (id) => (await pool.query('SELECT twilio_number, twilio_number_sid FROM businesses WHERE id = $1', [id])).rows[0];
+const rowOf = async (id) => (await pool.query('SELECT * FROM businesses WHERE id = $1', [id])).rows[0];
 const live = (twilio) => createPhoneNumbers({ mode: 'live', twilio, publicUrl: 'https://phone.test/' });
 
 test('the area code comes from US and Canadian business phone numbers', () => {
@@ -148,4 +149,97 @@ test('no number for businesses that don’t pay, already have one, or don’t ne
   }
   assert.deepEqual(fake.calls, []);
   assert.deepEqual(await orders(), []);
+});
+
+// --- Releasing numbers when a plan ends ---
+
+const DAY = 86_400_000;
+const NOW = new Date('2026-12-20T12:00:00Z');
+
+// A business that bought a number, whose plan then ended `daysAgo` days before NOW.
+async function endedBusiness(numbers, daysAgo, status = 'canceled') {
+  const row = await numbers.ensureNumberFor(await business());
+  await pool.query('UPDATE businesses SET subscription_status = $2, subscription_ended_at = $3 WHERE id = $1', [
+    row.id,
+    status,
+    new Date(NOW.getTime() - daysAgo * DAY),
+  ]);
+  return row;
+}
+
+test('a bought number is released a week after the plan ends', async () => {
+  const fake = fakeTwilio();
+  const numbers = live(fake.twilio);
+  const row = await endedBusiness(numbers, 8);
+  assert.equal(await numbers.releaseEndedNumbers(NOW), 1);
+
+  assert.deepEqual(fake.calls.at(-1), ['release', row.twilio_number_sid]);
+  assert.deepEqual(await numberOf(row.id), { twilio_number: null, twilio_number_sid: null });
+  const order = await latestNumberOrder(row.id);
+  assert.equal(order.status, 'released');
+  assert.ok(order.released_at);
+  // Running again finds nothing left to release.
+  assert.equal(await numbers.releaseEndedNumbers(NOW), 0);
+});
+
+test('the number is kept during the week after the plan ends, and when the owner pays again', async () => {
+  const fake = fakeTwilio({ available: { '': ['+12025550123', '+12025550124', '+12025550125'] } });
+  const numbers = live(fake.twilio);
+  const recent = await endedBusiness(numbers, 3);
+  assert.equal(releaseDateFor(await rowOf(recent.id)).toISOString(), new Date(NOW.getTime() + 4 * DAY).toISOString());
+  const back = await endedBusiness(numbers, 30);
+  await pool.query("UPDATE businesses SET subscription_status = 'active', subscription_ended_at = NULL WHERE id = $1", [back.id]);
+  const unpaid = await endedBusiness(numbers, 30, 'unpaid');
+
+  assert.equal(await numbers.releaseEndedNumbers(NOW), 0);
+  assert.equal(fake.calls.filter(([name]) => name === 'release').length, 0);
+  for (const { id } of [recent, back, unpaid]) assert.ok((await numberOf(id)).twilio_number);
+  assert.equal(releaseDateFor(await rowOf(back.id)), null);
+});
+
+test('numbers added in the admin site are never released', async () => {
+  const fake = fakeTwilio();
+  const row = await business();
+  await pool.query(
+    "UPDATE businesses SET twilio_number = '+18312490526', subscription_status = 'canceled', subscription_ended_at = $2 WHERE id = $1",
+    [row.id, new Date(NOW.getTime() - 60 * DAY)],
+  );
+  assert.equal(await live(fake.twilio).releaseEndedNumbers(NOW), 0);
+  assert.deepEqual(fake.calls, []);
+  assert.equal((await numberOf(row.id)).twilio_number, '+18312490526');
+});
+
+test('subscribing again after the release buys a new number', async () => {
+  const fake = fakeTwilio({ available: { '': ['+12025550123', '+12025550124'] } });
+  const numbers = live(fake.twilio);
+  const row = await endedBusiness(numbers, 8);
+  await numbers.releaseEndedNumbers(NOW);
+  await pool.query("UPDATE businesses SET subscription_status = 'active', subscription_ended_at = NULL WHERE id = $1", [row.id]);
+  const again = await numbers.ensureNumberFor(await rowOf(row.id));
+  assert.equal(again.twilio_number, '+12025550124');
+  assert.equal(fake.calls.filter(([name]) => name === 'buy').length, 2);
+});
+
+test('a failed release is recorded and tried again; one already gone from Twilio counts as released', async () => {
+  const fake = fakeTwilio();
+  const numbers = live(fake.twilio);
+  const row = await endedBusiness(numbers, 8);
+  fake.failRelease(Object.assign(new Error('Twilio is down'), { status: 503 }));
+  assert.equal(await numbers.releaseEndedNumbers(NOW), 0);
+  assert.equal((await latestNumberOrder(row.id)).release_error, 'Twilio is down');
+  assert.ok((await numberOf(row.id)).twilio_number);
+
+  fake.failRelease(Object.assign(new Error('The requested resource was not found'), { status: 404 }));
+  assert.equal(await numbers.releaseEndedNumbers(NOW), 1);
+  assert.equal((await numberOf(row.id)).twilio_number, null);
+  assert.equal((await latestNumberOrder(row.id)).release_error, null);
+});
+
+test("a dry run releases nothing, and 'off' doesn't even look", async () => {
+  const row = await endedBusiness(live(fakeTwilio().twilio), 8);
+  for (const mode of ['dry-run', 'off']) {
+    const numbers = createPhoneNumbers({ mode, twilio: untouchableTwilio });
+    assert.equal(await numbers.releaseEndedNumbers(NOW), 0);
+  }
+  assert.ok((await numberOf(row.id)).twilio_number);
 });

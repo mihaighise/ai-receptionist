@@ -368,3 +368,15 @@ test('by default (dry run) paying records the order but buys nothing', async () 
   assert.deepEqual(rows, [{ status: 'dry_run' }]);
   assert.equal((await businessRow(business.id)).twilio_number, null);
 });
+
+test('when a plan ends, the dashboard is told when the number will be released', async () => {
+  const { cookie, business } = await ownerWithBusiness();
+  await checkout(cookie);
+  await pool.query("UPDATE businesses SET twilio_number_sid = 'PN0001' WHERE id = $1", [business.id]);
+  const ended = { ...subscription({ customer: 'cus_1', status: 'canceled' }), ended_at: 1795000000 };
+  await sendWebhook('customer.subscription.deleted', ended);
+  const { billing } = (await api.request('GET', '/owner/me', { cookie })).body;
+  assert.equal(billing.needsPlan, true);
+  assert.equal(billing.numberReleasesAt, new Date((1795000000 + 7 * 86400) * 1000).toISOString());
+  assert.equal((await businessRow(business.id)).subscription_ended_at.getTime(), 1795000000 * 1000);
+});

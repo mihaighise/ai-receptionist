@@ -9,6 +9,7 @@ import { migrate } from '../shared/db/migrate.js';
 import { createApp } from './app.js';
 import { signInProviders, warnIfAuthSchemaOutdated } from './auth.js';
 import { failInterruptedImports } from './menu-import.js';
+import { createPhoneNumbers } from './phone-numbers.js';
 
 const PORT = Number(process.env.API_PORT ?? 3001);
 const HOST = process.env.API_HOST ?? '127.0.0.1';
@@ -34,7 +35,8 @@ try {
   process.exit(1);
 }
 
-const app = createApp({ adminPassword: ADMIN_PASSWORD });
+const phoneNumbers = createPhoneNumbers();
+const app = createApp({ adminPassword: ADMIN_PASSWORD, phoneNumbers });
 console.log(`Twilio numbers for paying businesses: ${process.env.TWILIO_BUY_NUMBERS || 'dry-run'}`);
 
 app.listen(PORT, HOST, () => {
@@ -42,3 +44,10 @@ app.listen(PORT, HOST, () => {
   console.log(`Owner sign-in: ${signInProviders.join(', ') || 'none'} (owners open ${process.env.BETTER_AUTH_URL})`);
   console.log('Open the web app with: cd web && npm run dev');
 });
+
+// Gives back the numbers of businesses whose plan ended a while ago (phone-numbers.js): now, then
+// every hour. unref() lets the process exit without waiting for the timer.
+const releaseNumbers = () =>
+  phoneNumbers.releaseEndedNumbers().catch((err) => console.error('Could not release numbers:', err.message));
+releaseNumbers();
+setInterval(releaseNumbers, 60 * 60 * 1000).unref();

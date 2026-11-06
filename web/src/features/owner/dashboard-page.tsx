@@ -21,13 +21,11 @@ import { ManageBillingButton } from '@/features/billing/manage-billing-button';
 import { formatDate, planName } from '@/features/billing/plan-format';
 import { UsageMeter, usageLevel } from '@/features/billing/usage-meter';
 import { useCheckoutReturn } from '@/features/billing/use-checkout-return';
+import { RecentCalls } from '@/features/calls/recent-calls';
+import { formatPhone } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const LANGUAGE_NAMES: Record<string, string> = { en: 'English', es: 'Spanish' };
-
-// "+18312490526" -> "+1 (831) 249-0526"; other countries are shown as stored.
-const formatNumber = (number: string) =>
-  /^\+1\d{10}$/.test(number) ? `+1 (${number.slice(2, 5)}) ${number.slice(5, 8)}-${number.slice(8)}` : number;
 
 const greeting = () => {
   const hour = new Date().getHours();
@@ -47,7 +45,11 @@ function statusOf(business: Business, billing: Billing | null): Status {
       label: 'Choose a plan to go live',
       detail:
         billing.status === 'canceled'
-          ? 'Your plan has ended, so calls are not being answered.'
+          ? `Your plan has ended, so calls are not being answered.${
+              billing.numberReleasesAt && business.twilio_number
+                ? ` Your number ${formatPhone(business.twilio_number)} is kept until ${formatDate(billing.numberReleasesAt)}; choose a plan before then to keep it.`
+                : ''
+            }`
           : 'Your receptionist is ready. It starts answering calls once you choose a plan.',
     };
   }
@@ -64,7 +66,7 @@ function statusOf(business: Business, billing: Billing | null): Status {
   return {
     tone: 'live',
     label: 'Answering calls',
-    detail: `Callers to ${formatNumber(business.twilio_number)} reach your receptionist, day and night.`,
+    detail: `Callers to ${formatPhone(business.twilio_number)} reach your receptionist, day and night.`,
   };
 }
 
@@ -277,7 +279,7 @@ function Overview({ business, billing }: { business: Business; billing: Billing 
     <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
       <InfoCard icon={<PhoneCall className="size-4" />} label="Number callers dial">
         <p className={cn('font-semibold text-lg', !business.twilio_number && 'text-muted-foreground')}>
-          {business.twilio_number ? formatNumber(business.twilio_number) : 'Not assigned yet'}
+          {business.twilio_number ? formatPhone(business.twilio_number) : 'Not assigned yet'}
         </p>
       </InfoCard>
       <InfoCard icon={<Languages className="size-4" />} label="Speaks">
@@ -383,6 +385,7 @@ export function DashboardPage() {
       <StatusCard business={business} billing={billing} />
       {billing?.usage.limited && !billing.needsPlan && <MinutesCard billing={billing} />}
       <Overview business={business} billing={billing} />
+      <RecentCalls />
     </div>
   );
 }

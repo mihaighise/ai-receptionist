@@ -1,5 +1,5 @@
 import { Link, Outlet } from '@tanstack/react-router';
-import { CreditCard, Headset, House } from 'lucide-react';
+import { CreditCard, Headset, House, PhoneIncoming } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { cn } from '@/lib/utils';
 import { UserMenu } from './user-menu';
@@ -7,6 +7,7 @@ import { UserMenu } from './user-menu';
 // The owner app's pages, in the sidebar (desktop) and the tab bar (phones).
 const NAV = [
   { to: '/', label: 'Home', icon: House, exact: true },
+  { to: '/calls', label: 'Calls', icon: PhoneIncoming, exact: false },
   { to: '/setup', label: 'Receptionist', icon: Headset, exact: false },
   { to: '/plan', label: 'Plan & billing', short: 'Billing', icon: CreditCard, exact: false },
 ] as const;
@@ -39,7 +40,7 @@ function TabBar() {
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg md:hidden"
     >
-      <div className="mx-auto grid max-w-md grid-cols-3">
+      <div className="mx-auto grid max-w-md grid-cols-4">
         {NAV.map(({ to, label, icon: Icon, exact, ...rest }) => (
           <Link
             key={to}

@@ -64,9 +64,10 @@ export async function usageFor(row, db = pool) {
   };
 }
 
-// Records a call the receptionist answered, once it has ended. If it goes past the plan's minutes
+// Records a call the receptionist answered, once it has ended, with what happened on it
+// (transferred, and the message taken, for the call history). If it goes past the plan's minutes
 // for the month, the rest comes off the extra minutes. Recording the same call twice does nothing.
-export async function recordCall({ businessId, callSid, caller, startedAt, endedAt }) {
+export async function recordCall({ businessId, callSid, caller, startedAt, endedAt, transferred = false, message = null }) {
   const seconds = Math.max(0, Math.round((endedAt - startedAt) / 1000));
   const minutes = minutesFor(seconds);
   const client = await pool.connect();
@@ -75,9 +76,9 @@ export async function recordCall({ businessId, callSid, caller, startedAt, ended
     // Calls for one business are counted one at a time, so two ending together count right.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`business-minutes:${businessId}`]);
     const { rowCount } = await client.query(
-      `INSERT INTO calls (business_id, call_sid, caller, started_at, ended_at, seconds, minutes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (call_sid) DO NOTHING`,
-      [businessId, callSid, caller || null, startedAt, endedAt, seconds, minutes],
+      `INSERT INTO calls (business_id, call_sid, caller, started_at, ended_at, seconds, minutes, transferred, message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (call_sid) DO NOTHING`,
+      [businessId, callSid, caller || null, startedAt, endedAt, seconds, minutes, transferred, message],
     );
     const { rows } = await client.query('SELECT * FROM businesses WHERE id = $1', [businessId]);
     const row = rows[0];
@@ -114,6 +115,23 @@ export async function addTopUp(businessId, minutes, checkoutSessionId) {
     [businessId, minutes, checkoutSessionId],
   );
   return rowCount > 0;
+}
+
+// A business's calls, newest first, for the owner app: up to `limit`, after the cursor `after`
+// (from the previous page). Returns { calls, next }: next is the cursor for the following page, or
+// null if there are no more. The cursor is "<started_at>~<id>", so calls started at the same
+// moment are never skipped or repeated.
+export async function listCalls(businessId, { after = null, limit = 50 } = {}) {
+  const [at, id] = typeof after === 'string' && after.includes('~') ? after.split('~') : [null, null];
+  const { rows } = await pool.query(
+    `SELECT id, started_at, caller, seconds, minutes, transferred, message FROM calls
+     WHERE business_id = $1 AND ($2::timestamptz IS NULL OR (started_at, id) < ($2::timestamptz, $3::bigint))
+     ORDER BY started_at DESC, id DESC LIMIT $4`,
+    [businessId, at, id, limit + 1],
+  );
+  const calls = rows.slice(0, limit);
+  const last = calls.at(-1);
+  return { calls, next: rows.length > limit ? `${last.started_at.toISOString()}~${last.id}` : null };
 }
 
 // What the phone server does with a new call to this business (the object from toBusiness):

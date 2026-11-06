@@ -1,6 +1,6 @@
 // The owner app's data from the API (/api/owner): who is signed in and their business.
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Business, Options, Preview } from './businesses';
 import { api } from './client';
 
@@ -22,6 +22,8 @@ export interface Billing {
   periodEnd: string | null;
   cancels: boolean;
   usage: Usage;
+  // When the business's number will be given back because its plan ended, or null.
+  numberReleasesAt: string | null;
 }
 
 // Call minutes this billing month (src/shared/usage.js).
@@ -176,4 +178,31 @@ export const useMenuImport = (id: string | null) =>
     queryFn: () => api<MenuImport>('GET', `/owner/menu-imports/${id}`),
     enabled: Boolean(id),
     refetchInterval: (query) => (query.state.data?.status === 'reading' || !query.state.data ? 1500 : false),
+  });
+
+// One answered call, for the call history.
+export interface Call {
+  id: string;
+  started_at: string;
+  caller: string | null;
+  seconds: number;
+  minutes: number;
+  transferred: boolean;
+  // The message taken on the call, if any.
+  message: { caller_name: string; callback_number: string; message: string; urgent: boolean } | null;
+}
+
+// The business's calls, newest first, `pageSize` at a time (fetchNextPage loads more).
+export const useCalls = (pageSize = 50) =>
+  useInfiniteQuery({
+    queryKey: ['owner', 'calls', pageSize],
+    queryFn: ({ pageParam }) =>
+      api<{ calls: Call[]; next: string | null }>(
+        'GET',
+        `/owner/calls?limit=${pageSize}${pageParam ? `&after=${encodeURIComponent(pageParam)}` : ''}`,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    // New calls show up without reloading the page.
+    refetchInterval: 60_000,
   });

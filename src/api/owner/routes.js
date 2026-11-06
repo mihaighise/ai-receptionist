@@ -7,6 +7,8 @@
 //   GET  /api/owner/options            languages and features to choose from
 //   PUT  /api/owner/business           save their business's settings, creating it the first time
 //   POST /api/owner/preview            the greeting callers would hear with unsaved settings
+//   GET  /api/owner/calls              ?after=<cursor>&limit=<1-100> -> { calls, next }: the business's
+//                                      calls, newest first, with any message taken
 //   GET  /api/owner/plans              { plans, topUp, testMode }: the plans, and extra minutes
 //   POST /api/owner/billing/checkout   { plan } -> { url } of a Stripe Checkout page to pay for it
 //   POST /api/owner/billing/top-up     { minutes } -> { url } of a Stripe Checkout page to buy them
@@ -22,6 +24,7 @@
 
 import express from 'express';
 import { findBusinessRowByOwner, saveOwnerBusiness } from '../../shared/businesses.js';
+import { listCalls } from '../../shared/usage.js';
 import { getSession, signInProviders } from '../auth.js';
 import {
   BillingError,
@@ -77,6 +80,15 @@ export function ownerRoutes({ stripe, phoneNumbers, menuImports }) {
   // Only the greeting: Claude's instructions are for the admin site.
   router.post('/preview', (req, res) => {
     res.json({ greeting: preview(parseSettings(req.body)).greeting });
+  });
+
+  router.get('/calls', async (req, res) => {
+    const business = await findBusinessRowByOwner(req.user.id);
+    if (!business) return res.json({ calls: [], next: null });
+    const after = typeof req.query.after === 'string' ? req.query.after : null;
+    if (after && !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z~\d+$/.test(after)) return res.status(400).json({ error: 'Invalid cursor.' });
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+    res.json(await listCalls(business.id, { after, limit }));
   });
 
   router.get('/plans', (_req, res) => {

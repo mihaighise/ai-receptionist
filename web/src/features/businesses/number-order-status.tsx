@@ -13,7 +13,10 @@ export function NumberOrderStatus({ businessId }: { businessId: string }) {
   const text = {
     dry_run: `Dry run: would have bought a number in ${area}. Nothing was bought.`,
     buying: `Buying a number in ${area}…`,
-    bought: `Bought ${order.phone_number} automatically.`,
+    bought: order.release_error
+      ? `Bought ${order.phone_number} automatically. Releasing it failed: ${order.release_error}. It's tried again every hour.`
+      : `Bought ${order.phone_number} automatically.`,
+    released: `Released ${order.phone_number} after the plan ended.`,
     failed: `Could not buy a number: ${order.error}. It's tried again on the next payment event.`,
   }[order.status];
   return (
@@ -22,7 +25,9 @@ export function NumberOrderStatus({ businessId }: { businessId: string }) {
       <p
         className={cn(
           'rounded-md border px-3 py-2 text-sm',
-          order.status === 'failed' ? 'border-destructive/40 text-destructive' : 'text-muted-foreground',
+          order.status === 'failed' || order.release_error
+            ? 'border-destructive/40 text-destructive'
+            : 'text-muted-foreground',
         )}
       >
         {text} <span className="text-xs">({when(order.created_at)})</span>

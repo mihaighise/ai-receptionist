@@ -11,6 +11,10 @@
 // The number is local to the business: in the area code of its own phone number, or anywhere in
 // the US if that area has none. Each attempt is a row in phone_number_orders; at most one can be
 // buying or bought per business, so two events arriving together can't buy two numbers.
+//
+// When a plan ends, the business keeps its number for RELEASE_AFTER_DAYS, in case the owner comes
+// back; then releaseEndedNumbers() (run every hour by the API server) gives it back to Twilio, so
+// it stops costing money. Only numbers bought here are released, never ones added in the admin site.
 
 import { pool } from '../shared/db/pool.js';
 import { getBusinessRow } from '../shared/businesses.js';
@@ -18,6 +22,18 @@ import { isPaid } from '../shared/plans.js';
 import { getTwilioClient } from '../shared/twilio.js';
 
 export const MODES = ['dry-run', 'live', 'off'];
+export const RELEASE_AFTER_DAYS = 7;
+// Subscription statuses that mean it's over (Stripe sets ended_at with them).
+const ENDED_STATUSES = ['canceled', 'incomplete_expired'];
+
+// When a business's bought number will be released because its plan ended, or null (it pays, it
+// has no bought number, or the plan hasn't ended).
+export function releaseDateFor(row) {
+  if (!row?.twilio_number_sid || !ENDED_STATUSES.includes(row.subscription_status) || !row.subscription_ended_at) {
+    return null;
+  }
+  return new Date(new Date(row.subscription_ended_at).getTime() + RELEASE_AFTER_DAYS * 86_400_000);
+}
 
 // "+1 (512) 555-0100" -> "512". Only US and Canadian numbers have an area code we can search by.
 export function areaCodeOf(phone) {
@@ -106,8 +122,75 @@ export function createPhoneNumbers({
     }
   }
 
+  // Numbers in dry-run that would have been released, so each is only logged once.
+  const loggedReleases = new Set();
+
+  async function release(row) {
+    if (mode === 'dry-run') {
+      if (!loggedReleases.has(row.id)) console.log(`Dry run: would release ${row.twilio_number} (${row.name}): its plan ended`);
+      loggedReleases.add(row.id);
+      return false;
+    }
+    try {
+      await client().incomingPhoneNumbers(row.twilio_number_sid).remove();
+    } catch (err) {
+      // Already gone from Twilio (released in the console): nothing left to do but forget it.
+      if (err.status !== 404) {
+        await pool.query(
+          "UPDATE phone_number_orders SET release_error = $2, updated_at = now() WHERE business_id = $1 AND status = 'bought'",
+          [row.id, err.message],
+        );
+        console.error(`Could not release ${row.twilio_number} (${row.name}):`, err.message);
+        return false;
+      }
+    }
+    const db = await pool.connect();
+    try {
+      await db.query('BEGIN');
+      // Only if it's still that number (not changed in the admin site meanwhile).
+      await db.query(
+        'UPDATE businesses SET twilio_number = NULL, twilio_number_sid = NULL WHERE id = $1 AND twilio_number_sid = $2',
+        [row.id, row.twilio_number_sid],
+      );
+      // Frees the business's one live order, so subscribing again buys a new number.
+      await db.query(
+        "UPDATE phone_number_orders SET status = 'released', released_at = now(), release_error = NULL, updated_at = now() WHERE business_id = $1 AND status = 'bought'",
+        [row.id],
+      );
+      await db.query('COMMIT');
+    } catch (err) {
+      await db.query('ROLLBACK');
+      throw err;
+    } finally {
+      db.release();
+    }
+    console.log(`Released ${row.twilio_number} (${row.name}): its plan ended`);
+    return true;
+  }
+
   return {
     mode,
+
+    // Releases the bought numbers of businesses whose plan ended more than RELEASE_AFTER_DAYS ago.
+    // Returns how many were released. Failures are recorded and tried again next time.
+    async releaseEndedNumbers(now = new Date()) {
+      if (mode === 'off') return 0;
+      const { rows } = await pool.query(
+        `SELECT * FROM businesses WHERE requires_subscription AND twilio_number_sid IS NOT NULL
+           AND subscription_status = ANY($1) AND subscription_ended_at < $2`,
+        [ENDED_STATUSES, new Date(now.getTime() - RELEASE_AFTER_DAYS * 86_400_000)],
+      );
+      let released = 0;
+      for (const row of rows) {
+        try {
+          if (await release(row)) released++;
+        } catch (err) {
+          console.error(`Could not release the number of ${row.name}:`, err.message);
+        }
+      }
+      return released;
+    },
+
     // Buys a number for this business row if it pays and has none (or records the dry run).
     // Returns the updated row when a number was bought, otherwise null. Never throws: a failed
     // purchase is recorded and doesn't stop the payment from being processed.
@@ -127,7 +210,7 @@ export function createPhoneNumbers({
 // A business's latest number order, for the admin site, or null.
 export async function latestNumberOrder(businessId) {
   const { rows } = await pool.query(
-    `SELECT status, area_code, phone_number, error, created_at FROM phone_number_orders
+    `SELECT status, area_code, phone_number, error, released_at, release_error, created_at FROM phone_number_orders
      WHERE business_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
     [businessId],
   );
