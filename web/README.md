@@ -1,4 +1,4 @@
-# Admin site
+# Web app
 
 The web app for the AI receptionist, with two parts:
 
@@ -20,31 +20,34 @@ In Docker (`docker compose up --build` in the repo root), the site is built and 
 
 ## Scripts
 
-| Command          | What it does                                         |
-| ---------------- | ---------------------------------------------------- |
-| `npm run dev`    | Development server that updates the page as you edit |
-| `npm run build`  | Type-checks and builds the site into `dist/`         |
-| `npm test`       | Runs the tests (Vitest)                              |
-| `npm run check`  | Lint and formatting check (Biome)                    |
-| `npm run format` | Fixes formatting and import order                    |
+| Command             | What it does                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `npm run dev`       | Development server that updates the page as you edit                                                       |
+| `npm run build`     | Type-checks and builds the site into `dist/`                                                               |
+| `npm test`          | Unit tests (Vitest)                                                                                        |
+| `npm run test:e2e`  | Browser tests in Chrome (Playwright), on their own servers and test database; see Tests in the main README |
+| `npm run typecheck` | Type-checks the app and the browser tests                                                                  |
+| `npm run check`     | Lint and formatting check (Biome)                                                                          |
+| `npm run format`    | Fixes formatting and import order                                                                          |
 
 ## Stack
 
-TypeScript, Vite, React, TanStack Router (pages), TanStack Query (loading and saving data), React Hook Form with Zod (forms and validation), Tailwind CSS with shadcn/ui components, lucide-react icons, Sonner toasts, Vitest and Biome.
+TypeScript, Vite, React, TanStack Router (pages), TanStack Query (loading and saving data), React Hook Form with Zod (forms and validation), Tailwind CSS with shadcn/ui components, lucide-react icons, Sonner toasts, Vitest, Playwright and Biome.
 
 ## Code
 
-| Path                       | What it holds                                                                            |
-| -------------------------- | ---------------------------------------------------------------------------------------- |
-| `src/main.tsx`             | Starts the app: data loading, pages and toasts                                           |
-| `src/router.tsx`           | The pages and their addresses, and which ones need a signed-in owner                     |
-| `src/features/owner/`      | The owner app: sign-in page, its layout and the dashboard                                |
-| `src/features/setup/`      | The owner's setup wizard: its steps, checks and review                                   |
-| `src/routes/`              | The admin site's layout and pages                                                        |
-| `src/features/businesses/` | Admin: the business list, the form and its validation, the preview and the delete dialog |
-| `src/api/`                 | The API client, and the hooks that load and save businesses and the owner's data         |
-| `src/lib/auth-client.ts`   | Better Auth's client: sign in with Google, the current session, sign out                 |
-| `src/components/ui/`       | shadcn/ui components, added with `npx shadcn@latest add <name>`                          |
-| `src/components/`          | Other shared components                                                                  |
+| Path                       | What it holds                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `src/main.tsx`             | Starts the app: data loading, pages and toasts                                                                        |
+| `src/router.tsx`           | The pages and their addresses, and which ones need a signed-in owner                                                  |
+| `src/features/owner/`      | The owner app: sign-in page, its layout and the dashboard                                                             |
+| `src/features/setup/`      | The owner's setup wizard: its steps, checks and review                                                                |
+| `src/routes/`              | The admin site's layout and pages                                                                                     |
+| `src/features/businesses/` | Admin: the business list, the form and its validation, the preview and the delete dialog                              |
+| `src/api/`                 | The API client, and the hooks that load and save businesses and the owner's data                                      |
+| `src/lib/auth-client.ts`   | Better Auth's client: sign in with Google, the current session, sign out                                              |
+| `src/components/ui/`       | shadcn/ui components, added with `npx shadcn@latest add <name>`                                                       |
+| `src/components/`          | Other shared components                                                                                               |
+| `e2e/`                     | Browser tests (Playwright), one file per part of the app; `fixtures.ts` signs owners in and empties the test database |
 
 The form's checks in `business-schema.ts` match the API's in `src/api/admin/routes.js`. The API checks again and its errors appear next to the same fields, so a rule changed in only one place still can't save bad data.

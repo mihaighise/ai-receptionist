@@ -11,7 +11,8 @@
     "api:dev": "node --watch --env-file-if-exists=.env src/api/server.js",
     "db:migrate": "node --env-file-if-exists=.env src/shared/db/migrate.js",
     "db:seed": "node --env-file-if-exists=.env src/shared/db/seed.js",
-    "db:auth-sql": "node --env-file-if-exists=.env src/api/auth-sql.js"
+    "db:auth-sql": "node --env-file-if-exists=.env src/api/auth-sql.js",
+    "test": "node --import ./test/support/env.js --test --test-concurrency=1 \"test/**/*.test.js\""
   },
   "engines": {
     "node": ">=20.12"
