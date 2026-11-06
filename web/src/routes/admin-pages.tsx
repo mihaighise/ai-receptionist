@@ -7,7 +7,7 @@ import { BusinessForm } from '@/features/businesses/business-form';
 // Only shown on phones, where the list and the form don't fit side by side.
 function BackToList() {
   return (
-    <Link to="/" className="mb-4 inline-flex items-center gap-1 text-muted-foreground text-sm md:hidden">
+    <Link to="/admin" className="mb-4 inline-flex items-center gap-1 text-muted-foreground text-sm md:hidden">
       <ArrowLeft className="size-4" /> All businesses
     </Link>
   );
@@ -33,7 +33,7 @@ export function NewBusinessPage() {
 }
 
 export function EditBusinessPage() {
-  const { businessId } = useParams({ from: '/businesses/$businessId' });
+  const { businessId } = useParams({ from: '/admin/businesses/$businessId' });
   const { data: businesses, isPending } = useBusinesses();
   const business = businesses?.find((b) => b.id === businessId);
 

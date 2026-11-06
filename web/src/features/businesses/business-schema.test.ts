@@ -18,12 +18,18 @@ const business: Business = {
   notify_whatsapp: '+40700000000',
   urgent_when: 'the caller is in severe pain',
   active: true,
+  owner_id: 'user-1',
+  owner_email: 'owner@example.com',
   created_at: '2026-11-05T00:00:00Z',
 };
 
 test('a business survives the round trip through the form unchanged', () => {
-  const { id, created_at, ...input } = business;
+  const { id, created_at, owner_id, ...input } = business;
   expect(toInput(toFormValues(business))).toEqual(input);
+});
+
+test('a business without an owner is saved with an empty owner email', () => {
+  expect(toInput(toFormValues({ ...business, owner_id: null, owner_email: null })).owner_email).toBe('');
 });
 
 test('phone numbers are saved in Twilio format, and empty ones as null', () => {
@@ -54,10 +60,18 @@ test('the form explains what is missing or wrong', () => {
     slug: 'Bad Slug',
     twilio_number: '12345',
     features: ['transfers'],
+    owner_email: 'not-an-email',
   });
   expect(result.success).toBe(false);
   const fields = Object.fromEntries(result.error?.issues.map((issue) => [issue.path[0], issue.message]) ?? []);
-  expect(Object.keys(fields).sort()).toEqual(['description', 'name', 'slug', 'transfer_number', 'twilio_number']);
+  expect(Object.keys(fields).sort()).toEqual([
+    'description',
+    'name',
+    'owner_email',
+    'slug',
+    'transfer_number',
+    'twilio_number',
+  ]);
 });
 
 test('a filled-in form passes', () => {

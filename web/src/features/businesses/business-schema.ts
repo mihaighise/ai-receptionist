@@ -7,6 +7,7 @@ import type { Business, BusinessInput } from '@/api/businesses';
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // "+1 (831) 249-0526" -> "+18312490526", the format Twilio uses.
 export const normalizePhone = (value: string) => value.trim().replace(/[\s().-]/g, '');
@@ -42,6 +43,7 @@ export const businessFormSchema = z
     urgent_when: z.string(),
     notify_sms: phone,
     notify_whatsapp: phone,
+    owner_email: z.string().refine((value) => !value.trim() || EMAIL.test(value.trim()), 'Enter an email address.'),
     active: z.boolean(),
   })
   .refine((values) => !values.features.includes('transfers') || values.transfer_number.trim(), {
@@ -67,6 +69,7 @@ export const emptyBusiness: BusinessFormValues = {
   urgent_when: '',
   notify_sms: '',
   notify_whatsapp: '',
+  owner_email: '',
   active: true,
 };
 
@@ -88,6 +91,7 @@ export function toFormValues(business: Business): BusinessFormValues {
     urgent_when: business.urgent_when,
     notify_sms: business.notify_sms ?? '',
     notify_whatsapp: business.notify_whatsapp ?? '',
+    owner_email: business.owner_email ?? '',
     active: business.active,
   };
 }
@@ -114,6 +118,7 @@ export function toInput(values: BusinessFormValues): BusinessInput {
     urgent_when: values.urgent_when.trim(),
     notify_sms: optionalPhone(values.notify_sms),
     notify_whatsapp: optionalPhone(values.notify_whatsapp),
+    owner_email: values.owner_email.trim(),
     active: values.active,
   };
 }

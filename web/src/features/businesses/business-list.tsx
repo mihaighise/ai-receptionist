@@ -22,7 +22,7 @@ export function BusinessList() {
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold">Businesses</h2>
         <Button asChild size="sm">
-          <Link to="/businesses/new">
+          <Link to="/admin/businesses/new">
             <Plus /> New
           </Link>
         </Button>
@@ -60,7 +60,7 @@ export function BusinessList() {
           {shown?.map((b) => (
             <Link
               key={b.id}
-              to="/businesses/$businessId"
+              to="/admin/businesses/$businessId"
               params={{ businessId: b.id }}
               className="rounded-md px-3 py-2 transition-colors hover:bg-muted"
               activeProps={{ className: 'bg-accent text-accent-foreground hover:bg-accent' }}

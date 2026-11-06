@@ -121,7 +121,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
       form.reset(toFormValues(saved));
       if (!business) {
         leaving.current = true;
-        navigate({ to: '/businesses/$businessId', params: { businessId: saved.id } });
+        navigate({ to: '/admin/businesses/$businessId', params: { businessId: saved.id } });
       }
     } catch (err) {
       showError(err);
@@ -215,6 +215,24 @@ export function BusinessForm({ business }: { business: Business | null }) {
         </FormField>
         <FormField label="FAQ" htmlFor="faq" className="sm:col-span-2" hint="One fact per line, as a plain sentence.">
           <Textarea id="faq" rows={5} {...register('faq')} />
+        </FormField>
+      </Section>
+
+      <Section title="Owner" description="The person who manages this business in the owner app.">
+        <FormField
+          label="Owner's email"
+          htmlFor="owner_email"
+          hint="The email of their Google account. They need to have signed in once."
+          error={errors.owner_email?.message}
+        >
+          <Input
+            id="owner_email"
+            type="email"
+            autoComplete="off"
+            placeholder="owner@example.com"
+            aria-invalid={!!errors.owner_email}
+            {...register('owner_email')}
+          />
         </FormField>
       </Section>
 
@@ -358,7 +376,7 @@ export function BusinessForm({ business }: { business: Business | null }) {
             business={business}
             onDeleted={() => {
               leaving.current = true;
-              navigate({ to: '/' });
+              navigate({ to: '/admin' });
             }}
           />
         )}
