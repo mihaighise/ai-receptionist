@@ -425,9 +425,15 @@ export function SetupWizard({ business }: { business: Business | null }) {
       setFormError(null);
       try {
         await save.mutateAsync(toSettings(values));
-        toast.success(business ? 'Your changes are saved.' : 'Your receptionist is set up.');
         leaving.current = true;
-        navigate({ to: '/' });
+        if (business) {
+          toast.success('Your changes are saved.');
+          navigate({ to: '/' });
+        } else {
+          // A new receptionist answers calls once it has a plan.
+          toast.success('Your receptionist is set up. Choose a plan to go live.');
+          navigate({ to: '/plan' });
+        }
       } catch (err) {
         if (!(err instanceof ApiError)) return setFormError(`Could not reach ${APP_NAME}. Please try again.`);
         for (const [field, message] of Object.entries(err.fields)) {

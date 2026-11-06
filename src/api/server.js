@@ -20,6 +20,8 @@ if (missing.length) {
   process.exit(1);
 }
 if (!signInProviders.length) console.warn('No sign-in provider set up: owners can\'t sign in (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)');
+if (!process.env.STRIPE_SECRET_KEY) console.warn('Billing is off: owners can\'t choose a plan (set STRIPE_SECRET_KEY)');
+else if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn('Stripe webhooks are off: plan changes and cancellations won\'t be seen (set STRIPE_WEBHOOK_SECRET)');
 
 try {
   await migrate();

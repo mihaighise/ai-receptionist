@@ -25,11 +25,28 @@ export interface Business {
   owner_id: string | null;
   // The email of the owner's account, for showing and editing who owns it.
   owner_email: string | null;
+  // Billing, kept up to date from Stripe. Only businesses owners set up need a subscription.
+  requires_subscription: boolean;
+  plan: string | null;
+  subscription_status: string | null;
+  subscription_period_end: string | null;
+  subscription_cancels: boolean;
   created_at: string;
 }
 
 // What the API accepts when creating or saving a business. The owner is given by email.
-export type BusinessInput = Omit<Business, 'id' | 'created_at' | 'owner_id' | 'owner_email'> & { owner_email: string };
+export type BusinessInput = Omit<
+  Business,
+  | 'id'
+  | 'created_at'
+  | 'owner_id'
+  | 'owner_email'
+  | 'requires_subscription'
+  | 'plan'
+  | 'subscription_status'
+  | 'subscription_period_end'
+  | 'subscription_cancels'
+> & { owner_email: string };
 
 export interface Options {
   languages: { code: string; name: string }[];

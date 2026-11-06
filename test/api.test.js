@@ -48,7 +48,7 @@ test('a new owner has no business until they save one', async () => {
   const { user, cookie } = await signedInOwner();
   const { status, body } = await api.request('GET', '/owner/me', { cookie });
   assert.equal(status, 200);
-  assert.deepEqual(body, { user: { id: user.id, name: 'Test Owner', email: 'owner@example.com', image: null }, business: null });
+  assert.deepEqual(body, { user: { id: user.id, name: 'Test Owner', email: 'owner@example.com', image: null }, business: null, billing: null });
 });
 
 test('saving creates the business, and /me then returns it', async () => {

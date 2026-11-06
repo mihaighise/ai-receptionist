@@ -20,6 +20,11 @@ const business: Business = {
   active: true,
   owner_id: 'user-1',
   owner_email: 'owner@example.com',
+  requires_subscription: false,
+  plan: null,
+  subscription_status: null,
+  subscription_period_end: null,
+  subscription_cancels: false,
   created_at: '2026-11-05T00:00:00Z',
 };
 

@@ -20,11 +20,17 @@ const business: Business = {
   active: true,
   owner_id: 'user-1',
   owner_email: 'owner@example.com',
+  requires_subscription: false,
+  plan: null,
+  subscription_status: null,
+  subscription_period_end: null,
+  subscription_cancels: false,
   created_at: '2026-11-05T00:00:00Z',
 };
 
 test('a business survives the round trip through the form unchanged', () => {
-  const { id, created_at, owner_id, ...input } = business;
+  const { id, created_at, owner_id, requires_subscription, plan, subscription_status, ...rest } = business;
+  const { subscription_period_end, subscription_cancels, ...input } = rest;
   expect(toInput(toFormValues(business))).toEqual(input);
 });
 

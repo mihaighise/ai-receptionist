@@ -14,4 +14,5 @@ Object.assign(process.env, {
   GOOGLE_CLIENT_ID: 'test-google-client-id',
   GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
 });
-delete process.env.ADMIN_PASSWORD;
+// Billing is off unless a test turns it on with a fake Stripe client (test/support/fake-stripe.js).
+for (const name of ['ADMIN_PASSWORD', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) delete process.env[name];
