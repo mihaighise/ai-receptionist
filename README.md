@@ -200,6 +200,10 @@ docker compose exec db psql -U receptionist -c "SELECT name, twilio_number, lang
 ```
 Changes apply from the next call. No restart is needed.
 
+### Landing page
+
+Visitors who aren't signed in see the public landing page at the home address (`/welcome`, `web/src/features/landing/`): what the receptionist does, a real sample of its voice in phone quality (`web/public/demo-call.wav`), how it works, features, a section per kind of business, pricing and common questions. The prices come from `GET /api/plans`, the same plans the app uses, so the page can't go out of date. It only describes what the product does today. Signed-in owners get their dashboard at the home address instead.
+
 ### Owner app
 
 Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. After setup, owners choose a plan (see Billing below). Call history comes next.

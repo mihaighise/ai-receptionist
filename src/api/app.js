@@ -3,13 +3,14 @@
 //   /api/owner/...   the owner app (owner/routes.js)
 //   /api/auth/...    owner sign-in, answered by Better Auth (auth.js)
 //   /api/stripe/webhook   subscription changes, sent by Stripe (stripe-webhook.js)
+//   /api/plans       the plans and the price of extra minutes, for the public landing page
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { toNodeHandler } from 'better-auth/node';
 import express from 'express';
 import { adminRoutes } from './admin/routes.js';
 import { getAuth } from './auth.js';
-import { createStripe } from './billing.js';
+import { createStripe, planList, topUpOptions } from './billing.js';
 import { ownerRoutes } from './owner/routes.js';
 import { createMenuImports } from './menu-import.js';
 import { createPhoneNumbers } from './phone-numbers.js';
@@ -43,6 +44,8 @@ export function createApp({
   // JSON parsing.
   app.all('/api/auth/{*path}', toNodeHandler(getAuth()));
   app.use('/api/stripe/webhook', stripeWebhook({ stripe, secret: stripeWebhookSecret, phoneNumbers }));
+  // Public: the landing page shows the same prices as the app (src/shared/plans.js).
+  app.get('/api/plans', (_req, res) => res.json({ plans: planList(), topUp: topUpOptions() }));
   app.use('/api/admin', requireAdminPassword(adminPassword), adminRoutes);
   app.use('/api/owner', ownerRoutes({ stripe, phoneNumbers, menuImports }));
   return app;

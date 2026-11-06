@@ -3,8 +3,10 @@
 import { createBusiness } from '../../src/shared/businesses.js';
 import { expect, expectNoSidewaysScroll, PHONE, test } from './fixtures';
 
-test('signed-out visitors are sent to sign-in', async ({ page }) => {
+test('signed-out visitors see the landing page at home, and sign in for the rest', async ({ page }) => {
   await page.goto('/');
+  await expect(page).toHaveURL('/welcome');
+  await page.goto('/calls');
   await expect(page).toHaveURL('/sign-in');
   await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeEnabled();
 });
@@ -66,7 +68,7 @@ test('signing out closes the dashboard', async ({ page, signIn }) => {
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('/sign-in');
   await page.goto('/');
-  await expect(page).toHaveURL('/sign-in');
+  await expect(page).toHaveURL('/welcome');
 });
 
 test('the sign-in page fits a phone', async ({ page }) => {

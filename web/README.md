@@ -40,6 +40,7 @@ TypeScript, Vite, React, TanStack Router (pages), TanStack Query (loading and sa
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `src/main.tsx`             | Starts the app: data loading, pages and toasts                                                                          |
 | `src/router.tsx`           | The pages and their addresses, and which ones need a signed-in owner                                                    |
+| `src/features/landing/`    | The public landing page (`/welcome`), always dark; `public/demo-call.wav` is the voice sample it plays                  |
 | `src/features/owner/`      | The owner app: sign-in page, its layout and the dashboard                                                               |
 | `src/features/billing/`    | The plan page, the Manage billing button and plan wording                                                               |
 | `src/features/setup/`      | The owner's setup wizard: its steps, checks and review                                                                  |
