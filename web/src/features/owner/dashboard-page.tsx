@@ -1,10 +1,21 @@
-import { CircleCheck, CirclePause, Languages, PhoneCall, Sparkles } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import {
+  ArrowRight,
+  CircleCheck,
+  CircleDashed,
+  CirclePause,
+  Languages,
+  PhoneCall,
+  Settings,
+  Sparkles,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Business } from '@/api/businesses';
 import { useMe } from '@/api/owner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const LANGUAGE_NAMES: Record<string, string> = { en: 'English', es: 'Spanish' };
@@ -31,17 +42,28 @@ function ReceptionistCard({ business }: { business: Business }) {
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-lg">{business.name}</CardTitle>
-          {business.active ? (
+          {!business.active ? (
+            <Badge variant="outline">
+              <CirclePause /> Paused
+            </Badge>
+          ) : business.twilio_number ? (
             <Badge className="bg-emerald-600 text-white">
               <CircleCheck /> Answering calls
             </Badge>
           ) : (
             <Badge variant="outline">
-              <CirclePause /> Paused
+              <CircleDashed /> Waiting for a phone number
             </Badge>
           )}
         </div>
         <CardDescription>Your receptionist</CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/setup">
+              <Settings /> Edit settings
+            </Link>
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="grid gap-5 sm:grid-cols-2">
         <Fact icon={<PhoneCall className="size-4" />} label="Number callers dial">
@@ -55,8 +77,8 @@ function ReceptionistCard({ business }: { business: Business }) {
   );
 }
 
-// What an owner sees after signing in. Setup, call history and billing come next; for now it
-// shows their receptionist once a business is linked to them.
+// What an owner sees after signing in: their receptionist, or a way to set one up. Call history
+// and billing come next.
 export function DashboardPage() {
   const { data, isPending, error } = useMe();
 
@@ -85,10 +107,17 @@ export function DashboardPage() {
             </div>
             <CardTitle className="text-lg">Let's set up your receptionist</CardTitle>
             <CardDescription>
-              Setting up your business here is coming soon. Until then, we'll connect your business to this account for
-              you.
+              Tell it about your business, the languages it speaks and what it should do with calls. It takes about five
+              minutes.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/setup">
+                Get started <ArrowRight />
+              </Link>
+            </Button>
+          </CardContent>
         </Card>
       )}
     </div>

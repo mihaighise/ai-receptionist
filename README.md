@@ -78,7 +78,8 @@ The backend in `src/` is split by job. Code in `shared/` is used by both the pho
 |---|---|
 | `server.js` | The API server; mounts each app's routes under `/api` |
 | `admin/routes.js` | `/api/admin/...`: list, create, edit and delete businesses, link their owners, and preview them |
-| `owner/routes.js` | `/api/owner/...`: the signed-in owner and their business |
+| `owner/routes.js` | `/api/owner/...`: the signed-in owner, and setting up and changing their business |
+| `business-input.js` | Checks the business settings both sites send, and what each may change |
 | `auth.js` | Owner sign-in with Better Auth (`/api/auth/...`): Google now, Microsoft and Apple later |
 | `auth-sql.js` | Prints the SQL Better Auth needs after an upgrade (`npm run db:auth-sql`) |
 
@@ -176,9 +177,9 @@ Changes apply from the next call. No restart is needed.
 
 ### Owner app
 
-Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. For now they see their receptionist's status, number and languages. Setup, call history and billing come next.
+Business owners sign in at http://localhost:5173 (Docker: http://localhost:3001) with Google; signing in for the first time creates their account. New owners go through a five-step setup (their business, languages, what the receptionist does, common questions, and a review with the greeting callers will hear), which creates their business. **Edit settings** on the dashboard reopens it to change anything. Owners can't set the Twilio number, whether the business is active, its slug or who owns it; the slug is made from the business name. Taking messages needs an SMS or WhatsApp number to send them to. Billing and call history come next.
 
-A business shows up for an owner once it's linked to them: the owner signs in once, then you enter their Google email in the business's **Owner's email** field in the admin site.
+A new owner's business has no Twilio number, so it gets no calls until you add one in the admin site (buying one automatically comes with billing). You can also link an existing business to an owner: the owner signs in once, then you enter their Google email in the business's **Owner's email** field.
 
 **Setting up Google sign-in** (once):
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or pick one), then go to **APIs & Services → OAuth consent screen** and set it up: app name, support email, and **External** users. While the app is in **Testing**, only the test users you add there can sign in.
